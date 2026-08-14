@@ -1,4 +1,5 @@
 import { McpToolRow } from './McpToolRow.tsx'
+import { en, NS, zh, type McpKey } from './locales.ts'
 import { MCP_ROW_CSS } from './mcp-row.css.ts'
 
 type CommandExecution = {
@@ -21,7 +22,11 @@ type AnyCtx = {
   effect: (fn: () => () => void, name?: string) => unknown
   slots: {
     inject: (name: string, factory: () => unknown) => unknown
-    register: (spec: { name: string; key: string }, view: unknown) => unknown
+    register: (spec: { name: string; key: string; locale?: string }, view: unknown) => unknown
+  }
+  locale?: {
+    register: (ns: string, dicts: { zh: Record<string, string>; en: Record<string, string> }) => () => void
+    bind: (ns: string) => (key: string) => string
   }
 }
 
@@ -65,7 +70,7 @@ interface Snapshot {
 const STYLE_ID = 'dsh-mcp-adapter-style'
 
 export const name = 'dsh-mcp-adapter'
-export const inject = ['slots', 'commandUi', 'remote']
+export const inject = ['slots', 'commandUi', 'remote', 'locale']
 
 export function apply(ctx: AnyCtx): void {
   ctx.effect(() => {
@@ -81,12 +86,15 @@ export function apply(ctx: AnyCtx): void {
     }
   }, 'dsh-mcp-adapter: styles')
 
+  if (ctx.locale) {
+    ctx.effect(() => ctx.locale!.register(NS, { zh, en }), 'dsh-mcp-adapter: locale')
+  }
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register(
-    { name: 'tool.call.toolview', key: 'mcp' },
+    { name: 'tool.call.toolview', key: 'mcp', locale: NS },
     McpToolRow,
   ))
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register(
-    { name: 'tool.call.toolview', key: 'mcpScript' },
+    { name: 'tool.call.toolview', key: 'mcpScript', locale: NS },
     McpToolRow,
   ))
 
@@ -100,7 +108,8 @@ export function apply(ctx: AnyCtx): void {
       kind: 'popupSelect',
       options: async (session, signal) => {
         const snapshot = await loadSnapshot(ctx, session.sessionId, signal)
-        return buildOptions(snapshot)
+        const t = ctx.locale?.bind(NS)
+        return buildOptions(snapshot, key => t?.(key) ?? en[key])
       },
       onSelect: async (option, session) => {
         const line = lineFor(option.id)
@@ -129,72 +138,82 @@ async function loadSnapshot(ctx: AnyCtx, sessionId: string, signal: AbortSignal)
   }
 }
 
-function buildOptions(snapshot: Snapshot): SelectOption[] {
+function buildOptions(snapshot: Snapshot, t: (key: McpKey) => string): SelectOption[] {
   const options: SelectOption[] = [
-    { id: 'status', label: 'Status', detail: 'Connection state and cached tools' },
-    { id: 'list', label: 'Sources', detail: 'Config files this session loaded' },
-    { id: 'prompts', label: 'Prompts', detail: 'Cached MCP slash commands' },
+    { id: 'status', label: t('menu.status'), detail: t('menu.status.detail') },
+    { id: 'list', label: t('menu.sources'), detail: t('menu.sources.detail') },
+    { id: 'prompts', label: t('menu.prompts'), detail: t('menu.prompts.detail') },
   ]
   for (const preset of snapshot.presets ?? []) {
     if (preset.configured) continue
     options.push({
       id: `add-preset:${preset.id}`,
       label: preset.name,
-      detail: `Add · ${preset.summary}`,
+      detail: `${t('menu.add')} · ${preset.summary}`,
     })
   }
   for (const server of snapshot.servers ?? []) {
     const status = server.disabled ? 'disabled' : server.status ?? 'idle'
-    const count = `${server.toolCount ?? 0} tools`
+    const count = `${server.toolCount ?? 0}`
     if (server.disabled) {
       options.push({
         id: `enable:${server.name}`,
         label: server.name,
-        detail: `Enable · ${status}`,
+        detail: `${t('menu.enable')} · ${status}`,
       })
     } else if (server.status === 'needs-auth' || ((server.oauth || server.hasUrl) && server.status === 'not-connected')) {
       options.push({
         id: `auth:${server.name}`,
         label: server.name,
-        detail: `Authorize · ${status}`,
+        detail: `${t('menu.authorize')} · ${status}`,
       })
       options.push({
         id: `connect:${server.name}`,
         label: server.name,
-        detail: `Connect · ${count}`,
+        detail: `${t('menu.connect')} · ${count}`,
       })
     } else {
       options.push({
         id: `connect:${server.name}`,
         label: server.name,
-        detail: server.status === 'connected' ? `Connected · ${count}` : `Connect · ${status} · ${count}`,
+        detail: server.status === 'connected'
+          ? `${t('menu.connected')} · ${count}`
+          : `${t('menu.connect')} · ${status} · ${count}`,
       })
     }
     if (!server.disabled) {
       options.push({
         id: `disable:${server.name}`,
         label: server.name,
-        detail: 'Disable',
-        confirmation: confirmDialog(`Disable ${server.name}?`, 'The server stays in config but will not connect.'),
+        detail: t('menu.disable'),
+        confirmation: confirmDialog(
+          t('confirm.disable.title').replace('{name}', server.name),
+          t('confirm.disable.body'),
+          t,
+        ),
       })
     }
     options.push({
       id: `remove:${server.name}`,
       label: server.name,
-      detail: 'Remove',
-      confirmation: confirmDialog(`Remove ${server.name}?`, 'Deletes it from project .mcp.json, or disables it if it came from another file.'),
+      detail: t('menu.remove'),
+      confirmation: confirmDialog(
+        t('confirm.remove.title').replace('{name}', server.name),
+        t('confirm.remove.body'),
+        t,
+      ),
     })
   }
   return options
 }
 
-function confirmDialog(title: string, description: string): SelectOption['confirmation'] {
+function confirmDialog(title: string, description: string, t: (key: McpKey) => string): SelectOption['confirmation'] {
   return {
     title,
     description,
-    acknowledgeLabel: 'I understand',
-    cancelLabel: 'Cancel',
-    confirmLabel: 'Continue',
+    acknowledgeLabel: t('confirm.ack'),
+    cancelLabel: t('confirm.cancel'),
+    confirmLabel: t('confirm.ok'),
   }
 }
 

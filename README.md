@@ -160,7 +160,7 @@ dsh-mcp-adapter status
 
 ## Status
 
-| Piece | 0.5.0 |
+| Piece | 0.6.0 |
 |---|---|
 | `mcp` proxy tool | yes |
 | `.mcp.json` merge + host discovery | yes |

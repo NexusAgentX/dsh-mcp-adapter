@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp-adapter",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "MCP adapter for DeepSeek Harness — one proxy tool instead of dumping every MCP schema into context.",
   "type": "module",
   "main": "./dist/index.js",
@@ -35,7 +35,8 @@
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-ui-tool",
-        "@deepseek-ai/dsh-client-ui-commands"
+        "@deepseek-ai/dsh-client-ui-commands",
+        "@deepseek-ai/dsh-client-locale"
       ]
     }
   },

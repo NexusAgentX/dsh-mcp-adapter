@@ -1,14 +1,15 @@
-import { useMemo, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react'
+import { useMemo, useState, type ReactElement } from 'react'
 import {
+  Button,
+  DisclosureRow,
   IconApiOutline14,
-  IconChevronDownOutline14,
   IconInspectOutline12,
   SearchBlock,
   StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { McpKey } from './locales.ts'
 
 interface Block {
-  callId?: string
   argsRaw?: string
   call?: { argsRaw?: string } | null
   content?: Array<{ type?: string; text?: string }>
@@ -18,9 +19,7 @@ interface Block {
   resultView?: {
     card?: string
     shape?: string
-    title?: string
     files?: Array<{ path: string; matches: Array<{ lineNumber: number; line: string }> }>
-    paths?: string[]
     truncated?: boolean
     total?: number
   } | null
@@ -30,6 +29,7 @@ interface Props {
   toolName: string
   block: Block
   inspect?: () => void
+  t?: (key: McpKey) => string
 }
 
 type RowState = 'running' | 'ok' | 'error'
@@ -66,11 +66,14 @@ function metaOf(block: Block): Record<string, unknown> {
     : {}
 }
 
+function firstLine(text: string): string {
+  const newline = text.indexOf('\n')
+  return (newline === -1 ? text : text.slice(0, newline)).trim()
+}
+
 function titleOf(args: Record<string, unknown>, meta: Record<string, unknown>): string {
-  if (args.action === 'auth-start') return 'MCP Auth'
-  if (args.action === 'auth-complete') return 'MCP Auth'
+  if (args.action === 'auth-start' || args.action === 'auth-complete') return 'MCP Auth'
   if (typeof args.prompt === 'string') return 'MCP Prompt'
-  if (typeof args.tool === 'string') return 'MCP'
   if (args.search !== undefined) return 'MCP Search'
   if (typeof args.describe === 'string') return 'MCP Describe'
   if (typeof args.connect === 'string') return 'MCP Connect'
@@ -88,13 +91,8 @@ function summaryOf(args: Record<string, unknown>, meta: Record<string, unknown>,
   if (typeof args.connect === 'string') return args.connect
   if (typeof args.describe === 'string') return args.describe
   if (typeof args.server === 'string') return args.server
-  if (meta.mode === 'status' && Array.isArray(meta.servers)) return `${meta.servers.length} servers`
-  return firstLine(text) || 'MCP'
-}
-
-function firstLine(text: string): string {
-  const newline = text.indexOf('\n')
-  return (newline === -1 ? text : text.slice(0, newline)).trim()
+  if (meta.mode === 'status' && Array.isArray(meta.servers)) return `${meta.servers.length}`
+  return firstLine(text)
 }
 
 function serverDot(status: string | undefined): 'done' | 'warning' | 'ongoing' | 'error' {
@@ -139,7 +137,8 @@ function searchProps(block: Block, meta: Record<string, unknown>) {
   }
 }
 
-export function McpToolRow({ block, inspect }: Props): ReactElement {
+export function McpToolRow({ block, inspect, t }: Props): ReactElement {
+  const label = (key: McpKey): string => t?.(key) ?? key
   const [expanded, setExpanded] = useState(false)
   const args = useMemo(() => argsOf(block), [block])
   const meta = useMemo(() => metaOf(block), [block])
@@ -152,84 +151,75 @@ export function McpToolRow({ block, inspect }: Props): ReactElement {
   const servers = Array.isArray(meta.servers) ? meta.servers as ServerRow[] : []
   const search = searchProps(block, meta)
   const expandable = Boolean(text || search || servers.length || authUrl)
-
-  const toggle = (): void => {
-    if (expandable) setExpanded(value => !value)
-  }
-  const onKey = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (!expandable || (event.key !== 'Enter' && event.key !== ' ')) return
-    event.preventDefault()
-    toggle()
-  }
-
-  const leading = leadingIcon(state, expanded, expandable)
   const open = expanded && expandable
-
-  return (
-    <div data-dsh-mcp data-state={state}>
-      <div
-        className="dsh-mcp-row"
-        data-expandable={expandable || undefined}
-        role={expandable ? 'button' : undefined}
-        tabIndex={expandable ? 0 : undefined}
-        aria-expanded={expandable ? open : undefined}
-        onClick={toggle}
-        onKeyDown={onKey}
-      >
-        <span className="dsh-mcp-leading">{leading}</span>
-        <span className="dsh-mcp-title">{title}</span>
-        <span className="dsh-mcp-sep" aria-hidden />
-        <span className="dsh-mcp-summary" data-error={state === 'error' || undefined}>{summary}</span>
-      </div>
-      {authUrl ? (
-        <a className="dsh-mcp-auth" href={authUrl} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}>
-          Open authorization
-        </a>
-      ) : null}
-      {open && search ? <SearchBlock {...search} /> : null}
-      {open && servers.length > 0 ? (
-        <div className="dsh-mcp-card">
-          <div className="dsh-mcp-card-head">Servers</div>
-          <div className="dsh-mcp-servers">
-            {servers.map(server => (
-              <div className="dsh-mcp-server" key={server.name}>
-                <StateDot state={serverDot(server.status)} />
-                <strong>{server.name}</strong>
-                <span>{server.status ?? 'idle'} · {server.toolCount ?? 0} tools</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      {open && text && !search ? (
-        <div className="dsh-mcp-card">
-          <div className="dsh-mcp-card-head">Output</div>
-          <pre className="dsh-mcp-pre" data-error={state === 'error' || undefined}>{linkify(text)}</pre>
-        </div>
-      ) : null}
-      {inspect ? (
-        <button type="button" className="dsh-mcp-inspect" onClick={event => { event.stopPropagation(); inspect() }}>
-          <IconInspectOutline12 />
-          Inspect
-        </button>
-      ) : null}
-    </div>
-  )
-}
-
-function leadingIcon(state: RowState, open: boolean, expandable: boolean): ReactNode {
-  const rest = state === 'running'
+  const icon = state === 'running'
     ? <StateDot state="ongoing" />
     : state === 'error'
       ? <StateDot state="error" />
       : <IconApiOutline14 size={14} />
-  if (open) return <IconChevronDownOutline14 className="dsh-mcp-chevron" />
-  if (!expandable) return rest
+
   return (
-    <>
-      <span className="dsh-mcp-icon-idle">{rest}</span>
-      <IconChevronDownOutline14 className="dsh-mcp-chevron dsh-mcp-chevron-hover" />
-    </>
+    <div data-dsh-mcp data-state={state}>
+      {state === 'running' ? <span className="dsh-mcp-vh">{label('row.running')}</span> : null}
+      {state === 'error' ? <span className="dsh-mcp-vh">{label('row.failed')}</span> : null}
+      <DisclosureRow
+        icon={icon}
+        title={title}
+        open={open}
+        expandable={expandable}
+        expandOnRowClick
+        keepContentWhenOpen
+        onToggle={() => setExpanded(value => !value)}
+        collapsedContent={summary ? (
+          <>
+            <span className="dsh-mcp-sep" aria-hidden />
+            <span className="dsh-mcp-summary" data-error={state === 'error' || undefined}>{summary}</span>
+          </>
+        ) : null}
+      >
+        {authUrl ? (
+          <div className="dsh-mcp-actions">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={event => {
+                event.stopPropagation()
+                window.open(authUrl, '_blank', 'noopener,noreferrer')
+              }}
+            >
+              {label('auth.open')}
+            </Button>
+          </div>
+        ) : null}
+        {search ? <SearchBlock {...search} /> : null}
+        {servers.length > 0 ? (
+          <div className="dsh-mcp-card">
+            <div className="dsh-mcp-card-head">{label('row.servers')}</div>
+            <div className="dsh-mcp-servers">
+              {servers.map(server => (
+                <div className="dsh-mcp-server" key={server.name}>
+                  <StateDot state={serverDot(server.status)} />
+                  <strong>{server.name}</strong>
+                  <span>{server.status ?? 'idle'} · {server.toolCount ?? 0}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {text && !search ? (
+          <div className="dsh-mcp-card">
+            <div className="dsh-mcp-card-head">{label('row.output')}</div>
+            <pre className="dsh-mcp-pre" data-error={state === 'error' || undefined}>{linkify(text)}</pre>
+          </div>
+        ) : null}
+        {inspect ? (
+          <button type="button" className="dsh-mcp-inspect" onClick={event => { event.stopPropagation(); inspect() }}>
+            <IconInspectOutline12 />
+            {label('inspect')}
+          </button>
+        ) : null}
+      </DisclosureRow>
+    </div>
   )
 }
 
