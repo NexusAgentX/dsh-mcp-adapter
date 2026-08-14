@@ -2,7 +2,7 @@
 
 Use [MCP](https://modelcontextprotocol.io/) servers with [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) without burning the context window.
 
-`0.0.1` is a **name reservation + installable bundle stub**. The proxy-tool implementation is next.
+One `mcp` proxy tool. Lazy server start. On-demand `search` / `describe` / `call`.
 
 English | [中文](#中文)
 
@@ -16,18 +16,12 @@ This adapter follows the [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-a
 - lazy server start
 - on-demand `search` / `describe` / `call`
 - standard `.mcp.json` / `~/.config/mcp/mcp.json` discovery
+- optional `directTools` promotion for hot-path tools
+- metadata cache so search works before a live connect
 
 It is an independent plugin. It is not affiliated with DeepSeek AI.
 
-## Status
-
-| Piece | 0.0.1 |
-|---|---|
-| npm name `dsh-mcp-adapter` | reserved |
-| `dsh plugin add` bundle stub | yes |
-| `mcp` proxy tool | not yet |
-| `.mcp.json` loader | not yet |
-| `/mcp` command | not yet |
+Do not mount this adapter and `@deepseek-ai/dsh-mcp-client` against the same servers. They would double-connect and fight over names.
 
 ## Install
 
@@ -35,9 +29,137 @@ It is an independent plugin. It is not affiliated with DeepSeek AI.
 dsh plugin --profile web add dsh-mcp-adapter
 ```
 
-The stub loads and prints a placeholder log line. It does not connect to MCP servers yet.
+Restart the profile (`dsh web` / `dsh tui`) after install.
 
-## Planned usage
+## Quick start
+
+Preferred project config: `.mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@1.6.0"]
+    }
+  }
+}
+```
+
+Then:
+
+```
+mcp({ search: "screenshot" })
+mcp({ describe: "chrome-devtools_take_screenshot" })
+mcp({ tool: "chrome-devtools_take_screenshot", args: { format: "png" } })
+```
+
+`args` can be a JSON object or a JSON string.
+
+## Config files
+
+| File | Purpose |
+|---|---|
+| `~/.config/mcp/mcp.json` | User-global shared MCP config |
+| `~/.agents/mcp.json` | User-global tool-agnostic MCP config |
+| `~/.agents/mcp/mcp.json` | User-global tool-agnostic MCP config |
+| `.mcp.json` | Project-local shared MCP config |
+| `$DSH_HOME/mcp.json` | dsh global override (`~/.dsh/mcp.json` by default) |
+| `.dsh/mcp.json` | dsh project override |
+
+Later files win. `/mcp disable` and `/mcp enable` write only the `disabled` field to `.dsh/mcp.json`. They never copy credentials.
+
+Host-specific configs (Cursor, Claude Code, Codex, OpenCode, Windsurf, VS Code) are detected by `dsh-mcp-adapter init` and `/mcp list`. They are **not** loaded unless you set `settings.hostConfigDiscovery` to `"on"` or list them in `imports`.
+
+```json
+{
+  "imports": ["cursor"],
+  "settings": {
+    "hostConfigDiscovery": "off",
+    "toolPrefix": "server",
+    "idleTimeout": 10
+  },
+  "mcpServers": {}
+}
+```
+
+## Server options
+
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["-y", "some-mcp-server"],
+      "lifecycle": "lazy",
+      "idleTimeout": 10,
+      "requestTimeoutMs": 30000,
+      "directTools": ["search"],
+      "includeTools": ["search", "get_*"],
+      "excludeTools": ["admin_*"],
+      "searchKeywords": {
+        "search": ["find", "lookup"]
+      }
+    }
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `lifecycle` | `lazy` (default), `eager`, `keep-alive`, `lazy-keep-alive` |
+| `idleTimeout` | Minutes before an idle lazy server is closed (default 10, `0` disables) |
+| `directTools` | `true` or a name list — register those tools as native dsh tools |
+| `url` / `headers` / `bearerToken` / `bearerTokenEnv` | Streamable HTTP; SSE fallback on 404/405 |
+| `disabled` | Keep the entry visible but do not connect |
+
+## Human command
+
+```
+/mcp
+/mcp list
+/mcp connect <server>
+/mcp enable <server>
+/mcp disable <server>
+```
+
+## CLI
+
+```sh
+dsh-mcp-adapter init
+dsh-mcp-adapter status
+```
+
+## Status
+
+| Piece | 0.1.0 |
+|---|---|
+| `mcp` proxy tool | yes |
+| `.mcp.json` merge + host discovery | yes |
+| lazy / eager / keep-alive | yes |
+| metadata cache | yes |
+| `/mcp` command | yes |
+| `directTools` | yes |
+| resources as `read_*` tools | yes |
+| output guard | yes |
+| OAuth browser flow | not yet — use `headers` / `bearerToken` |
+| MCP prompts / elicitation / sampling / UI apps | not yet |
+
+## License
+
+[MIT](LICENSE)
+
+Inspired by [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter) (MIT). See [NOTICE](NOTICE).
+
+---
+
+## 中文
+
+给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的 MCP 适配器：一个代理工具，按需搜索 / 描述 / 调用，而不是把每个 MCP schema 都塞进上下文。机制对齐 [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter)。
+
+```sh
+dsh plugin --profile web add dsh-mcp-adapter
+```
 
 ```json
 {
@@ -52,23 +174,5 @@ The stub loads and prints a placeholder log line. It does not connect to MCP ser
 
 ```
 mcp({ search: "screenshot" })
-mcp({ tool: "chrome_devtools_take_screenshot", args: { format: "png" } })
-```
-
-## License
-
-[MIT](LICENSE)
-
-Inspired by [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter) (MIT). See [NOTICE](NOTICE).
-
----
-
-## 中文
-
-给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的 MCP 适配器：一个代理工具，按需搜索/描述/调用，而不是把每个 MCP schema 都塞进上下文。
-
-`0.0.1` 只抢注 npm 名并提供可安装的 bundle 占位。代理工具实现随后补上。
-
-```sh
-dsh plugin --profile web add dsh-mcp-adapter
+mcp({ tool: "chrome-devtools_take_screenshot", args: { format: "png" } })
 ```

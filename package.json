@@ -1,25 +1,23 @@
 {
   "name": "dsh-mcp-adapter",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "MCP adapter for DeepSeek Harness — one proxy tool instead of dumping every MCP schema into context.",
   "type": "module",
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "import": "./index.js",
-      "default": "./index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
   },
   "bin": {
-    "dsh-mcp-adapter": "./cli.js"
+    "dsh-mcp-adapter": "./dist/cli.js"
   },
   "files": [
-    "index.js",
-    "index.d.ts",
-    "cli.js",
+    "dist",
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
@@ -31,8 +29,10 @@
     }
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
-    "prepack": "node --test test/*.test.js"
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "prepack": "npm run build && npm test"
   },
   "engines": {
     "node": ">=20"
@@ -58,5 +58,30 @@
   "homepage": "https://github.com/NexusAgentX/dsh-mcp-adapter#readme",
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "smol-toml": "^1.6.1",
+    "strip-json-comments": "^5.0.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-commands": "^0.0.1-rc.1",
+    "@deepseek-ai/dsh-tools": "^0.0.1-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-commands": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-commands": "^0.0.1-rc.1",
+    "@deepseek-ai/dsh-tools": "^0.0.1-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@types/node": "^22.15.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }

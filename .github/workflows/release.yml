@@ -20,17 +20,29 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - name: Test
-        run: node --test test/*.test.js
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
       - name: Publish
-        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if npm view "dsh-mcp-adapter@$version" version >/dev/null 2>&1; then
+            echo "dsh-mcp-adapter@$version is already on npm; skipping publish"
+          else
+            npm publish --access public --provenance
+          fi
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "GitHub release $GITHUB_REF_NAME already exists"
+            exit 0
+          fi
           notes_file="$(mktemp)"
           if [ -f CHANGELOG.md ]; then
             awk -v ver="$version" '
