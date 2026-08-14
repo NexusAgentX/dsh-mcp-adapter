@@ -6,11 +6,12 @@ import type {} from '@deepseek-ai/dsh-tools'
 import { handleMcpCommand } from './commands.js'
 import { resolveDirectTools } from './direct-tools.js'
 import { logger } from './logger.js'
-import { dispatchProxy } from './proxy.js'
+import { runMcpScript } from './mcp-script.js'
+import { listAllPromptMetadata } from './prompts.js'
+import { dispatchProxy, executeCall } from './proxy.js'
 import { createRuntime, startRuntime, stopRuntime } from './runtime.js'
 import type { McpRuntimeState } from './state.js'
 import { parseJsonObjectArgs } from './utils.js'
-import { executeCall } from './proxy.js'
 
 export const name = 'dsh-mcp-adapter'
 export const inject = ['tools']
@@ -42,7 +43,9 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
 
   registerProxyTool(ctx, state)
   registerDirectTools(ctx, state)
+  registerScriptTool(ctx, state)
   registerCommand(ctx, state)
+  registerPromptCommands(ctx, state)
 
   await startRuntime(state, controller.signal)
   logger.info(`loaded ${Object.keys(state.config.mcpServers).length} MCP server(s)`)
@@ -70,6 +73,8 @@ function registerProxyTool(ctx: Context, state: McpRuntimeState): void {
       limit: { type: 'integer', description: 'Maximum search results to return (default: 12)' },
       offset: { type: 'integer', description: 'Search result offset (default: 0)' },
       server: { type: 'string', description: 'Filter to a specific server (also disambiguates tool calls)' },
+      action: { type: 'string', description: "Action: 'auth-start' or 'auth-complete'" },
+      prompt: { type: 'string', description: 'MCP prompt name to fetch' },
     },
     output: {
       schema: { type: 'json' },
@@ -130,12 +135,60 @@ function registerCommand(ctx: Context, state: McpRuntimeState): void {
   if (!commands) return
   commands.register({
     name: 'mcp',
-    description: 'MCP server status, connect, enable, disable',
-    input: { hint: '[status|list|connect <server>|enable <server>|disable <server>]' },
+    description: 'MCP server status, connect, auth, prompts, enable, disable',
+    input: { hint: '[status|list|connect <server>|auth <server>|prompts|approve <server> <tool>|enable <server>|disable <server>]' },
     async handler(invocation) {
       return handleMcpCommand(state, invocation.rawInput)
     },
   })
+}
+
+function registerScriptTool(ctx: Context, state: McpRuntimeState): void {
+  if (state.config.settings?.scriptMode === false) return
+  ctx.tools.register(defineTool({
+    name: 'mcpScript',
+    description: 'Run trusted JavaScript that makes multiple MCP tool calls in one request. Discover with tools.search({ query }), inspect with tools.describe({ path }), call with tools.call(path, args), and emit(value) for extra output.',
+    parameters: {
+      code: { type: 'string', required: true, description: 'Trusted JavaScript MCP script' },
+      timeoutMs: { type: 'integer', description: 'Execution timeout in milliseconds (default: 30000)' },
+    },
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value) => {
+        const record = value && typeof value === 'object' && !Array.isArray(value) ? value as { text?: unknown } : undefined
+        return [{ type: 'text', text: typeof record?.text === 'string' ? record.text : JSON.stringify(value) }]
+      },
+    },
+    async execute(args, exec) {
+      const result = await runMcpScript(state, args.code, args.timeoutMs, exec.signal)
+      return JSON.parse(JSON.stringify(result))
+    },
+  }))
+}
+
+function registerPromptCommands(ctx: Context, state: McpRuntimeState): void {
+  const commands = ctx.get('commands')
+  if (!commands) return
+  for (const prompt of listAllPromptMetadata(state)) {
+    try {
+      commands.register({
+        name: prompt.commandName.toLowerCase(),
+        description: prompt.description || `MCP prompt from ${prompt.serverName}`,
+        input: { hint: prompt.arguments.map(arg => arg.required ? `<${arg.name}>` : `[${arg.name}]`).join(' ') },
+        async handler(invocation) {
+          const { dispatchProxy } = await import('./proxy.js')
+          const result = await dispatchProxy(state, {
+            prompt: prompt.originalName,
+            server: prompt.serverName,
+            args: invocation.rawInput,
+          }, invocation.signal)
+          return { kind: result.details.error ? 'error' : 'success', text: result.text }
+        },
+      })
+    } catch (error) {
+      logger.warn(`skipped prompt command ${prompt.commandName}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
 }
 
 function isObjectSchema(value: unknown): value is Record<string, unknown> {

@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 import stripJsonComments from 'strip-json-comments'
+import { loadAgentPluginConfigs } from './agent-plugin-loader.js'
 import { getHarnessPath } from './agent-dir.js'
 import type { HostConfigDiscovery, ImportKind, McpConfig, McpSettings, ServerEntry } from './types.js'
 import { toStringRecord } from './utils.js'
@@ -96,7 +97,16 @@ export function loadMcpConfig(overridePath?: string, cwd = process.cwd()): McpCo
     if (!loaded) continue
     config = mergeConfigs(config, expandImports(loaded, cwd))
   }
-  return config
+  const pluginConfig = loadAgentPluginConfigs(config.settings?.agentPluginPaths, cwd)
+  return mergeConfigs(pluginConfig, config)
+}
+
+export function resolveConfiguredOAuthDir(raw: unknown, cwd = process.cwd()): string | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'string') throw new Error('settings.oauthDir must be a string')
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+  return resolve(cwd, trimmed)
 }
 
 export function discoverConfig(cwd = process.cwd()): {

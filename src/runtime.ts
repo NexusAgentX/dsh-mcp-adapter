@@ -1,10 +1,13 @@
 import { cloneMcpConfig, loadMcpConfig } from './config.js'
 import { McpLifecycleManager } from './lifecycle.js'
+import { getAuthStorageOptions } from './mcp-auth.js'
+import { createOAuthRuntime } from './mcp-auth-flow.js'
 import { computeServerHash, loadMetadataCache, reconstructToolMetadata, saveMetadataCache, serializeServerCache } from './metadata-cache.js'
+import { reconstructPromptMetadata } from './prompts.js'
 import { McpServerManager } from './server-manager.js'
 import type { McpRuntimeState } from './state.js'
 import { buildToolMetadata } from './tool-metadata.js'
-import type { McpConfig, ServerDefinition } from './types.js'
+import type { McpConfig, PromptMetadata, ServerDefinition } from './types.js'
 import { isServerDisabled } from './types.js'
 import { logger } from './logger.js'
 import { formatTerminalError } from './utils.js'
@@ -23,17 +26,24 @@ export function createRuntime(options: CreateRuntimeOptions = {}): McpRuntimeSta
   const manager = new McpServerManager(cwd)
   manager.setRuntimeSignal(options.signal)
   manager.setDefaultRequestTimeoutMs(config.settings?.requestTimeoutMs)
+  const authStorageOptions = getAuthStorageOptions(config.settings?.oauthDir, cwd)
+  const oauthRuntime = createOAuthRuntime(options.signal)
+  manager.setAuthStorageOptions(authStorageOptions)
+  manager.setOAuthRuntime(oauthRuntime)
   const lifecycle = new McpLifecycleManager(manager)
   if (config.settings?.idleTimeout !== undefined) lifecycle.setGlobalIdleTimeout(config.settings.idleTimeout)
 
   const cache = programmaticConfig ? null : loadMetadataCache()
   const toolMetadata = reconstructToolMetadata(config, cache)
+  const promptMetadata = new Map<string, PromptMetadata[]>()
   const resourceCounts = new Map<string, number>()
   const serverInstructions = new Map<string, string>()
+  const prefix = config.settings?.toolPrefix ?? 'server'
   if (cache) {
     for (const [name, entry] of Object.entries(cache.servers)) {
       resourceCounts.set(name, entry.resources.length)
       if (entry.instructions) serverInstructions.set(name, entry.instructions)
+      if (entry.prompts?.length) promptMetadata.set(name, reconstructPromptMetadata(name, entry.prompts, prefix))
     }
   }
 
@@ -52,10 +62,14 @@ export function createRuntime(options: CreateRuntimeOptions = {}): McpRuntimeSta
     programmaticConfig,
     cwd,
     toolMetadata,
+    promptMetadata,
     resourceCounts,
     serverInstructions,
     failureTracker: new Map(),
     failureMessages: new Map(),
+    approvedToolCalls: new Map(),
+    oauthRuntime,
+    authStorageOptions,
     stopped: false,
   }
 
@@ -102,6 +116,7 @@ export async function connectAndCache(
     state.toolMetadata,
   )
   state.toolMetadata.set(name, metadata)
+  state.promptMetadata.set(name, reconstructPromptMetadata(name, connection.prompts, prefix))
   state.resourceCounts.set(name, connection.resources.length)
   if (connection.instructions) state.serverInstructions.set(name, connection.instructions)
   else state.serverInstructions.delete(name)
@@ -112,7 +127,7 @@ export async function connectAndCache(
     saveMetadataCache({
       version: 1,
       servers: {
-        [name]: serializeServerCache(definition, connection.tools, connection.resources, connection.instructions),
+        [name]: serializeServerCache(definition, connection.tools, connection.resources, connection.instructions, connection.prompts),
       },
     })
   }
@@ -133,11 +148,12 @@ export async function refreshServerMetadata(state: McpRuntimeState, name: string
     state.config.mcpServers,
     state.toolMetadata,
   ))
+  state.promptMetadata.set(name, reconstructPromptMetadata(name, connection.prompts, prefix))
   if (!state.programmaticConfig && computeServerHash(definition)) {
     saveMetadataCache({
       version: 1,
       servers: {
-        [name]: serializeServerCache(definition, connection.tools, connection.resources, connection.instructions),
+        [name]: serializeServerCache(definition, connection.tools, connection.resources, connection.instructions, connection.prompts),
       },
     })
   }

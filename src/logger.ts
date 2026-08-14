@@ -16,22 +16,21 @@ class Logger {
     this.minLevel = level
   }
 
-  debug(message: string): void {
-    if (LEVEL_PRIORITY.debug >= LEVEL_PRIORITY[this.minLevel]) console.debug(`[dsh-mcp] ${message}`)
+  debug(message: string, context?: unknown): void {
+    if (LEVEL_PRIORITY.debug >= LEVEL_PRIORITY[this.minLevel]) console.debug(`[dsh-mcp] ${message}`, context ?? '')
   }
 
-  info(message: string): void {
-    if (LEVEL_PRIORITY.info >= LEVEL_PRIORITY[this.minLevel]) console.info(`[dsh-mcp] ${message}`)
+  info(message: string, context?: unknown): void {
+    if (LEVEL_PRIORITY.info >= LEVEL_PRIORITY[this.minLevel]) console.info(`[dsh-mcp] ${message}`, context ?? '')
   }
 
-  warn(message: string): void {
-    if (LEVEL_PRIORITY.warn >= LEVEL_PRIORITY[this.minLevel]) console.warn(`[dsh-mcp] ${message}`)
+  warn(message: string, context?: unknown): void {
+    if (LEVEL_PRIORITY.warn >= LEVEL_PRIORITY[this.minLevel]) console.warn(`[dsh-mcp] ${message}`, context ?? '')
   }
 
-  error(message: string, error?: unknown): void {
+  error(message: string, error?: unknown, context?: unknown): void {
     if (LEVEL_PRIORITY.error < LEVEL_PRIORITY[this.minLevel]) return
-    if (error !== undefined) console.error(`[dsh-mcp] ${message}`, error)
-    else console.error(`[dsh-mcp] ${message}`)
+    console.error(`[dsh-mcp] ${message}`, error ?? '', context ?? '')
   }
 }
 

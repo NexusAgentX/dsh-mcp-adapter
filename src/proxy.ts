@@ -1,12 +1,15 @@
+import { completeAuthFromInput, startAuth, supportsOAuth } from './mcp-auth-flow.js'
 import { guardText } from './output-guard.js'
+import { formatPromptResult, listAllPromptMetadata, parsePromptArgs, resolvePromptArgs } from './prompts.js'
 import { connectAndCache } from './runtime.js'
 import { paginate, rankSuggestions, rankToolMatches } from './search-ranking.js'
 import type { McpRuntimeState } from './state.js'
+import { isSessionApproved, isToolCallApprovalRequired, rememberSessionApproval } from './tool-approval.js'
 import { findToolByName } from './tool-metadata.js'
 import { formatSchema } from './ts-shape.js'
 import type { ProxyResult, ToolMetadata } from './types.js'
 import { isServerDisabled } from './types.js'
-import { formatTerminalError } from './utils.js'
+import { formatTerminalError, resolveServerUrl } from './utils.js'
 
 const MAX_REGEX_SEARCH_QUERY_LENGTH = 256
 
@@ -22,9 +25,14 @@ export interface ProxyParams {
   limit?: number
   offset?: number
   server?: string
+  action?: string
+  prompt?: string
 }
 
 export async function dispatchProxy(state: McpRuntimeState, params: ProxyParams, signal?: AbortSignal): Promise<ProxyResult> {
+  if (params.action === 'auth-start') return executeAuthStart(state, params.server, signal)
+  if (params.action === 'auth-complete') return executeAuthComplete(state, params.server, params.args, signal)
+  if (params.prompt) return executePrompt(state, params.prompt, params.args, params.server, signal)
   if (params.tool) return executeCall(state, params.tool, asObject(params.args), params.server, signal)
   if (params.connect) return executeConnect(state, params.connect, signal)
   if (params.describe) return executeDescribe(state, params.describe)
@@ -319,6 +327,13 @@ export async function executeCall(
   const definition = state.config.mcpServers[serverName]
   if (!definition) return result(`Unknown server "${serverName}".`, { mode: 'call', error: 'unknown_server', server: serverName })
   if (isServerDisabled(definition)) return disabledResult('call', serverName)
+  if (isToolCallApprovalRequired(state.config, serverName, tool) && !isSessionApproved(state, serverName, tool.originalName)) {
+    return result(
+      `Tool "${tool.name}" requires approval. Run /mcp approve ${serverName} ${tool.originalName} to allow it for this session, or set approveTools.`,
+      { mode: 'call', error: 'approval_required', server: serverName, tool: tool.name },
+    )
+  }
+  if (isSessionApproved(state, serverName, tool.originalName)) rememberSessionApproval(state, serverName, tool.originalName)
 
   try {
     await connectAndCache(state, serverName, definition, signal)
@@ -428,4 +443,126 @@ function projectContent(content: unknown): string {
     else if (item.type === 'resource' || item.type === 'resource_link') parts.push('[resource]')
   }
   return parts.join('\n')
+}
+
+export async function executeAuthStart(state: McpRuntimeState, serverName: string | undefined, signal?: AbortSignal): Promise<ProxyResult> {
+  if (!serverName) return result('auth-start requires `server`.', { mode: 'auth-start', error: 'missing_server' })
+  const definition = state.config.mcpServers[serverName]
+  if (!definition) return result(`Unknown server "${serverName}".`, { mode: 'auth-start', error: 'unknown_server', server: serverName })
+  if (isServerDisabled(definition)) return disabledResult('auth-start', serverName)
+  if (!supportsOAuth(definition)) return result(`Server "${serverName}" is not configured for OAuth.`, { mode: 'auth-start', error: 'oauth_unsupported', server: serverName })
+  const url = resolveServerUrl(definition)
+  if (!url) return result(`Server "${serverName}" has no URL.`, { mode: 'auth-start', error: 'missing_url', server: serverName })
+  try {
+    const started = await startAuth(serverName, url, definition, {
+      authStorageOptions: state.authStorageOptions,
+      runtime: state.oauthRuntime,
+      signal,
+    })
+    const text = [
+      `MCP OAuth required for "${serverName}".`,
+      '',
+      'Open this URL in your local browser:',
+      '',
+      started.authorizationUrl,
+      '',
+      'After approving, copy the redirected localhost URL and complete with:',
+      `mcp({ action: "auth-complete", server: "${serverName}", args: { redirectUrl: "PASTE_REDIRECT_URL_HERE" } })`,
+    ].join('\n')
+    return result(text, { mode: 'auth-start', server: serverName, authorizationUrl: started.authorizationUrl })
+  } catch (error) {
+    return result(`Failed to start OAuth for "${serverName}": ${formatTerminalError(error)}`, {
+      mode: 'auth-start',
+      error: 'auth_start_failed',
+      server: serverName,
+      message: formatTerminalError(error),
+    })
+  }
+}
+
+export async function executeAuthComplete(state: McpRuntimeState, serverName: string | undefined, args: unknown, signal?: AbortSignal): Promise<ProxyResult> {
+  if (!serverName) return result('auth-complete requires `server`.', { mode: 'auth-complete', error: 'missing_server' })
+  const definition = state.config.mcpServers[serverName]
+  if (!definition) return result(`Unknown server "${serverName}".`, { mode: 'auth-complete', error: 'unknown_server', server: serverName })
+  if (isServerDisabled(definition)) return disabledResult('auth-complete', serverName)
+  const parsed = asObject(args)
+  const input = parsed?.redirectUrl ?? parsed?.code ?? parsed?.input
+  if (typeof input !== 'string' || input.trim().length === 0) {
+    return result('auth-complete requires args.redirectUrl, args.code, or args.input.', { mode: 'auth-complete', error: 'missing_input' })
+  }
+  try {
+    const status = await completeAuthFromInput(serverName, input, {
+      authStorageOptions: state.authStorageOptions,
+      runtime: state.oauthRuntime,
+      signal,
+    })
+    if (status !== 'authenticated') {
+      return result(`OAuth authentication did not complete for "${serverName}".`, {
+        mode: 'auth-complete',
+        error: 'not_authenticated',
+        server: serverName,
+        status,
+      })
+    }
+    await state.manager.close(serverName)
+    return result(`OAuth authentication successful for "${serverName}". Run mcp({ connect: "${serverName}" }) to connect.`, {
+      mode: 'auth-complete',
+      server: serverName,
+      authenticated: true,
+    })
+  } catch (error) {
+    return result(`Failed to complete OAuth for "${serverName}": ${formatTerminalError(error)}`, {
+      mode: 'auth-complete',
+      error: 'auth_complete_failed',
+      server: serverName,
+      message: formatTerminalError(error),
+    })
+  }
+}
+
+export async function executePrompt(
+  state: McpRuntimeState,
+  promptName: string,
+  args: unknown,
+  server?: string,
+  signal?: AbortSignal,
+): Promise<ProxyResult> {
+  const prompts = listAllPromptMetadata(state).filter(prompt =>
+    prompt.originalName === promptName || prompt.commandName === promptName || prompt.commandName.endsWith(`__${promptName}`),
+  )
+  const matches = server ? prompts.filter(prompt => prompt.serverName === server) : prompts
+  if (matches.length === 0) {
+    return result(`Prompt "${promptName}" not found. Connect the server first or use /mcp prompts.`, {
+      mode: 'prompt',
+      error: 'prompt_not_found',
+      requestedPrompt: promptName,
+    })
+  }
+  if (matches.length > 1) {
+    return result(`Prompt "${promptName}" matches multiple servers. Specify a server.`, {
+      mode: 'prompt',
+      error: 'ambiguous_prompt',
+      requestedPrompt: promptName,
+    })
+  }
+  const prompt = matches[0]!
+  const definition = state.config.mcpServers[prompt.serverName]
+  if (!definition) return result(`Unknown server "${prompt.serverName}".`, { mode: 'prompt', error: 'unknown_server' })
+  if (isServerDisabled(definition)) return disabledResult('prompt', prompt.serverName)
+  const parsedArgs = typeof args === 'string'
+    ? resolvePromptArgs(prompt, parsePromptArgs(args))
+    : { ok: true as const, args: (asObject(args) ?? {}) as Record<string, string> }
+  if (!parsedArgs.ok) return result(parsedArgs.error, { mode: 'prompt', error: 'invalid_args' })
+  try {
+    await connectAndCache(state, prompt.serverName, definition, signal)
+    const raw = await state.manager.getPrompt(prompt.serverName, prompt.originalName, parsedArgs.args, signal)
+    const text = formatPromptResult(raw)
+    return result(text || '(empty prompt result)', { mode: 'prompt', server: prompt.serverName, prompt: prompt.originalName })
+  } catch (error) {
+    return result(`Prompt "${prompt.originalName}" failed: ${formatTerminalError(error)}`, {
+      mode: 'prompt',
+      error: 'prompt_failed',
+      message: formatTerminalError(error),
+    })
+  }
 }

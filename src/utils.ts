@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
 import type { ServerEntry } from './types.js'
@@ -21,6 +22,53 @@ export function toStringRecord(value: unknown): Record<string, string> | undefin
 export function interpolateEnvRecord(values: Record<string, string> | undefined): Record<string, string> | undefined {
   if (!values) return undefined
   return Object.fromEntries(Object.entries(values).map(([key, value]) => [key, interpolateEnvVars(value)]))
+}
+
+const COMMAND_SECRET_TIMEOUT_MS = 10_000
+const COMMAND_SECRET_MAX_OUTPUT_BYTES = 1024 * 1024
+
+export function resolveCommandSecret(value: string, context: string): string
+export function resolveCommandSecret(value: undefined, context: string): undefined
+export function resolveCommandSecret(value: string | undefined, context: string): string | undefined
+export function resolveCommandSecret(value: string | undefined, context: string): string | undefined {
+  if (value === undefined) return undefined
+  if (value.startsWith('!!')) return interpolateEnvVars(value.slice(1))
+  if (!value.startsWith('!')) return interpolateEnvVars(value)
+
+  const result = spawnSync(value.slice(1), {
+    shell: true,
+    encoding: 'utf8',
+    timeout: COMMAND_SECRET_TIMEOUT_MS,
+    maxBuffer: COMMAND_SECRET_MAX_OUTPUT_BYTES,
+    stdio: ['ignore', 'pipe', 'ignore'],
+    windowsHide: true,
+  })
+  if (result.error) {
+    const code = (result.error as NodeJS.ErrnoException).code
+    const reason = code === 'ETIMEDOUT'
+      ? 'command timed out after 10 seconds'
+      : code === 'ENOBUFS'
+        ? 'command output exceeded 1 MiB'
+        : 'command failed to start'
+    throw new Error(`Failed to resolve ${context}: ${reason}`)
+  }
+  if (result.status !== 0) {
+    throw new Error(`Failed to resolve ${context}: command exited with code ${result.status ?? 'unknown'}`)
+  }
+  const resolved = result.stdout.trim()
+  if (!resolved) throw new Error(`Failed to resolve ${context}: command returned empty output`)
+  return resolved
+}
+
+export function resolveCommandSecretsRecord(
+  values: Record<string, string> | undefined,
+  context: (key: string) => string,
+): Record<string, string> | undefined {
+  if (!values) return undefined
+  return Object.fromEntries(Object.entries(values).map(([key, value]) => [
+    key,
+    resolveCommandSecret(value, context(key)),
+  ]))
 }
 
 export function resolveConfigPath(value: string | undefined, cwd = process.cwd()): string | undefined {

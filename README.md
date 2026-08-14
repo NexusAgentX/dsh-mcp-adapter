@@ -113,6 +113,24 @@ Host-specific configs (Cursor, Claude Code, Codex, OpenCode, Windsurf, VS Code) 
 | `url` / `headers` / `bearerToken` / `bearerTokenEnv` | Streamable HTTP; SSE fallback on 404/405 |
 | `disabled` | Keep the entry visible but do not connect |
 
+## OAuth
+
+```js
+mcp({ action: "auth-start", server: "notion" })
+mcp({ action: "auth-complete", server: "notion", args: { redirectUrl: "http://localhost:.../callback?code=..." } })
+```
+
+Or `/mcp auth notion`. Tokens persist in the OS credential store.
+
+## Prompts and scripting
+
+```
+mcp({ prompt: "create_plan", server: "agent-board", args: "harden retry policy" })
+/mcp prompts
+```
+
+`mcpScript` can loop/search/call multiple MCP tools in one JavaScript request.
+
 ## Human command
 
 ```
@@ -132,7 +150,7 @@ dsh-mcp-adapter status
 
 ## Status
 
-| Piece | 0.1.0 |
+| Piece | 0.2.0 |
 |---|---|
 | `mcp` proxy tool | yes |
 | `.mcp.json` merge + host discovery | yes |
@@ -142,8 +160,12 @@ dsh-mcp-adapter status
 | `directTools` | yes |
 | resources as `read_*` tools | yes |
 | output guard | yes |
-| OAuth browser flow | not yet — use `headers` / `bearerToken` |
-| MCP prompts / elicitation / sampling / UI apps | not yet |
+| OAuth browser flow | yes |
+| MCP prompts | yes |
+| `mcpScript` | yes |
+| `approveTools` | yes |
+| Agent Plugins / unix sockets / npx resolver | yes |
+| elicitation / sampling / MCP UI apps | not in dsh host yet |
 
 ## License
 

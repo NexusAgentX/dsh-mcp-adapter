@@ -89,6 +89,7 @@ export function serializeServerCache(
   tools: McpTool[],
   resources: McpResource[],
   instructions?: string,
+  prompts?: Array<{ name: string; title?: string; description?: string; arguments?: Array<{ name: string; description?: string; required?: boolean }> }>,
 ): ServerCacheEntry {
   return {
     configHash: computeServerHash(definition),
@@ -102,6 +103,12 @@ export function serializeServerCache(
       name: resource.name,
       description: resource.description,
     })),
+    ...(prompts ? { prompts: prompts.map(prompt => ({
+      name: prompt.name,
+      title: prompt.title,
+      description: prompt.description,
+      arguments: prompt.arguments,
+    })) } : {}),
     ...(instructions !== undefined ? { instructions } : {}),
     cachedAt: Date.now(),
   }

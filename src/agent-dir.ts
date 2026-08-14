@@ -13,3 +13,16 @@ export function getHarnessHome(): string {
 export function getHarnessPath(...segments: string[]): string {
   return join(getHarnessHome(), ...segments)
 }
+
+/** Alias used by the ported pi-mcp-adapter OAuth / cache modules. */
+export function getAgentPath(...segments: string[]): string {
+  return getHarnessPath(...segments)
+}
+
+export function getAppName(): string {
+  return 'dsh'
+}
+
+export function getAppClientUri(): string | undefined {
+  return undefined
+}

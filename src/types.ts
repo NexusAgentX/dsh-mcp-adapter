@@ -55,10 +55,21 @@ export interface ServerEntry {
   debug?: boolean
   protocolVersion?: 'legacy' | 'auto' | '2026-07-28'
   disabled?: boolean
+  httpTransport?: 'streamable-http' | 'sse'
+  pluginDataDir?: string
+  literalEnv?: boolean
+  trace?: boolean
 }
 
 export function isServerDisabled(definition: ServerEntry | undefined): boolean {
   return definition?.disabled === true
+}
+
+export interface McpTraceSettings {
+  enabled?: boolean
+  file?: string
+  maxBytes?: number
+  maxEvents?: number
 }
 
 export interface McpSettings {
@@ -68,10 +79,31 @@ export interface McpSettings {
   requestTimeoutMs?: number
   directTools?: boolean
   disableProxyTool?: boolean
+  freezeDirectTools?: boolean
+  scriptMode?: boolean
   autoAuth?: boolean
+  sampling?: boolean
+  samplingAutoApprove?: boolean
+  elicitation?: boolean
   outputGuard?: boolean | McpOutputGuardSettings
   authRequiredMessage?: string
+  oauthDir?: string
+  agentPluginPaths?: string[]
+  approveTools?: boolean | string[]
+  trace?: McpTraceSettings
 }
+
+export interface PromptMetadata {
+  serverName: string
+  originalName: string
+  commandName: string
+  title?: string
+  description: string
+  arguments: Array<{ name: string; description?: string; required?: boolean }>
+}
+
+export type McpToolApprovalOrigin = 'proxy' | 'direct' | 'script' | 'resource'
+export type McpToolApprovalDecision = 'allow_once' | 'allow_for_session' | 'deny' | 'abstain'
 
 export interface McpConfig {
   mcpServers: Record<string, ServerEntry>
@@ -131,10 +163,18 @@ export interface CachedResource {
   description?: string
 }
 
+export interface CachedPrompt {
+  name: string
+  title?: string
+  description?: string
+  arguments?: Array<{ name: string; description?: string; required?: boolean }>
+}
+
 export interface ServerCacheEntry {
   configHash: string
   tools: CachedTool[]
   resources: CachedResource[]
+  prompts?: CachedPrompt[]
   instructions?: string
   cachedAt: number
 }
@@ -288,4 +328,19 @@ export function isToolAllowed(
     || matchesToolSelector(toolName, serverName, prefix, includeTools, otherCurrentCandidates)
   const excluded = matchesToolSelector(toolName, serverName, prefix, excludeTools, otherCurrentCandidates)
   return included && !excluded
+}
+
+export function sanitizePromptName(name: string): string {
+  const cleaned = name.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^[_-]+|[_-]+$/g, '')
+  if (!cleaned) return 'prompt'
+  return /^[0-9]/.test(cleaned) ? `_${cleaned}` : cleaned
+}
+
+export function formatPromptCommandName(
+  promptName: string,
+  serverName: string,
+  prefix: ToolPrefix,
+): string {
+  const serverPart = getServerPrefix(serverName, prefix) || sanitizeServerPrefix(serverName) || 'server'
+  return `mcp__${serverPart}__${sanitizePromptName(promptName)}`
 }

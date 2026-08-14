@@ -1,7 +1,9 @@
 import { discoverConfig, writeProjectServerDisabledOverride } from './config.js'
-import { executeStatus } from './proxy.js'
+import { executeAuthStart, executeStatus } from './proxy.js'
+import { listAllPromptMetadata } from './prompts.js'
 import { connectAndCache } from './runtime.js'
 import type { McpRuntimeState } from './state.js'
+import { rememberSessionApproval } from './tool-approval.js'
 import { isServerDisabled } from './types.js'
 import { formatTerminalError } from './utils.js'
 
@@ -53,6 +55,40 @@ export async function handleMcpCommand(state: McpRuntimeState, rawInput: string)
     await state.manager.close(arg)
     return { kind: 'success', text: `Disabled ${arg}${written.changed ? ` (wrote ${written.path})` : ''}.` }
   }
+  if (verb === 'auth') {
+    if (!arg) return { kind: 'error', text: 'Usage: /mcp auth <server>' }
+    const started = await executeAuthStart(state, arg)
+    return { kind: started.details.error ? 'error' : 'success', text: started.text }
+  }
+  if (verb === 'prompts') {
+    const prompts = listAllPromptMetadata(state)
+    if (prompts.length === 0) return { kind: 'success', text: 'No cached MCP prompts. Connect a server first.' }
+    return {
+      kind: 'success',
+      text: prompts.map(prompt => `/${prompt.commandName} — ${prompt.description || prompt.originalName} (${prompt.serverName})`).join('\n'),
+    }
+  }
+  if (verb === 'approve') {
+    const [serverName, toolName] = rest
+    if (!serverName || !toolName) return { kind: 'error', text: 'Usage: /mcp approve <server> <tool>' }
+    rememberSessionApproval(state, serverName, toolName)
+    return { kind: 'success', text: `Approved ${serverName}/${toolName} for this session.` }
+  }
+  if (verb === 'setup') {
+    const discovery = discoverConfig(state.cwd)
+    return {
+      kind: 'success',
+      text: [
+        'MCP setup',
+        `configured servers: ${discovery.totalServerCount}`,
+        `hostConfigDiscovery: ${discovery.hostConfigDiscovery}`,
+        '',
+        'Write a project .mcp.json, or set settings.hostConfigDiscovery to "on" to adopt detected host configs.',
+        'Curated remotes: DeepWiki https://mcp.deepwiki.com/mcp , Context7 https://mcp.context7.com/mcp',
+        ...discovery.imports.map(entry => `detected ${entry.kind}: ${entry.path}`),
+      ].join('\n'),
+    }
+  }
   if (verb === 'enable') {
     if (!arg) return { kind: 'error', text: 'Usage: /mcp enable <server>' }
     if (!state.config.mcpServers[arg] && !state.programmaticConfig) {
@@ -66,6 +102,6 @@ export async function handleMcpCommand(state: McpRuntimeState, rawInput: string)
   }
   return {
     kind: 'error',
-    text: 'Usage: /mcp [status|list|connect <server>|reconnect <server>|enable <server>|disable <server>]',
+    text: 'Usage: /mcp [status|list|connect <server>|auth <server>|prompts|approve <server> <tool>|setup|enable <server>|disable <server>]',
   }
 }

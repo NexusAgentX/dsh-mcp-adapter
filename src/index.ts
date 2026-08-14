@@ -6,6 +6,7 @@ export { loadMcpConfig, cloneMcpConfig, discoverConfig } from './config.js'
 export { createRuntime, startRuntime, stopRuntime } from './runtime.js'
 export { dispatchProxy } from './proxy.js'
 export { formatToolName, resolveServerFromToolName, isServerDisabled } from './types.js'
+export { getMcpOAuthTokensForUrl, updateMcpOAuthTokensForUrl } from './oauth.js'
 
 export type {
   McpConfig,

@@ -1,3 +1,8 @@
+export function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true
+  return error instanceof Error && (error.name === 'AbortError' || error.message === 'MCP extension runtime stopped')
+}
+
 export function throwIfAborted(signal?: AbortSignal): void {
   if (!signal?.aborted) return
   throw signal.reason instanceof Error ? signal.reason : new Error(String(signal.reason ?? 'MCP request aborted'))

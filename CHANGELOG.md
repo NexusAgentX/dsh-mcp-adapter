@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-14
+
+### Added
+
+- OAuth browser flow via `mcp({ action: "auth-start"|"auth-complete" })` and `/mcp auth`, with OS credential-store persistence ported from pi-mcp-adapter.
+- MCP prompts: cache, `mcp({ prompt })`, `/mcp prompts`, and `/mcp__server__prompt` commands.
+- `mcpScript` for multi-call JavaScript MCP workflows.
+- Tool approval gates (`approveTools` + `/mcp approve`), Agent Plugins loader, npx resolver, Unix sockets, session recovery, command-secret `!` interpolation, and `/mcp setup`.
+
 ## [0.1.0] - 2026-08-14
 
 ### Added
