@@ -14,7 +14,7 @@ type RemoteResult = {
 
 type AnyCtx = {
   get: (name: string) => unknown
-  remote?: {
+  remote: {
     commands: {
       execute: (sessionId: string, line: string) => Promise<RemoteResult>
     }
@@ -70,7 +70,7 @@ interface Snapshot {
 const STYLE_ID = 'dsh-mcp-adapter-style'
 
 export const name = 'dsh-mcp-adapter'
-export const inject = ['slots', 'commandUi', 'remote', 'locale']
+export const inject = ['slots', 'commandUi', 'remote', 'remote.commands', 'locale']
 
 export function apply(ctx: AnyCtx): void {
   ctx.effect(() => {
@@ -113,7 +113,7 @@ export function apply(ctx: AnyCtx): void {
       },
       onSelect: async (option, session) => {
         const line = lineFor(option.id)
-        const result = await ctx.remote?.commands.execute(session.sessionId, line)
+        const result = await ctx.remote.commands.execute(session.sessionId, line)
         if (!result?.ok) throw new Error(`mcp command failed: ${result?.error?.code}: ${result?.error?.message}`)
         if (result.value === undefined) throw new Error('the host offers no /mcp command')
         if (result.value.result?.kind === 'error') throw new Error(result.value.result.text ?? 'mcp command failed')
@@ -128,7 +128,7 @@ export function apply(ctx: AnyCtx): void {
 
 async function loadSnapshot(ctx: AnyCtx, sessionId: string, signal: AbortSignal): Promise<Snapshot> {
   if (signal.aborted) return {}
-  const result = await ctx.remote?.commands.execute(sessionId, '/mcp json')
+  const result = await ctx.remote.commands.execute(sessionId, '/mcp json')
   const text = result?.ok ? result.value?.result?.text : undefined
   if (!text) return {}
   try {

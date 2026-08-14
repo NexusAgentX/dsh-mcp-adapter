@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-14
+
+### Fixed
+
+- Client `/mcp` popup now injects `remote.commands`, matching ui-plan / ui-commands. Entering `/mcp` no longer throws `cannot get property "remote.commands" without inject`.
+
 ## [0.6.2] - 2026-08-14
 
 ### Fixed
