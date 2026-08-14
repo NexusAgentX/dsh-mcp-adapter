@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-14
+
+### Changed
+
+- Restyled the Web MCP tool row to match Skill/Tool rows: 24px chrome, `--dsw-*` tokens, StateDot, official SearchBlock, and token-based authorization pill.
+- Tightened the `/mcp` popup to one primary action per server, with confirmations for disable/remove.
+
 ## [0.4.0] - 2026-08-14
 
 ### Added

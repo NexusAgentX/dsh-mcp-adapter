@@ -1,5 +1,5 @@
-import { createElement, type ReactNode } from 'react'
-import { McpToolRow } from './McpToolRow.ts'
+import { McpToolRow } from './McpToolRow.tsx'
+import { MCP_ROW_CSS } from './mcp-row.css.ts'
 
 type CommandExecution = {
   result?: { kind?: string; text?: string }
@@ -25,7 +25,18 @@ type AnyCtx = {
   }
 }
 
-type SelectOption = { id: string; label: string; detail?: string }
+type SelectOption = {
+  id: string
+  label: string
+  detail?: string
+  confirmation?: {
+    title: string
+    description: string
+    acknowledgeLabel: string
+    cancelLabel: string
+    confirmLabel: string
+  }
+}
 
 type CommandUi = {
   decorate: (decoration: {
@@ -51,17 +62,32 @@ interface Snapshot {
   presets?: Array<{ id: string; name: string; summary: string; configured?: boolean }>
 }
 
+const STYLE_ID = 'dsh-mcp-adapter-style'
+
 export const name = 'dsh-mcp-adapter'
 export const inject = ['slots', 'commandUi', 'remote']
 
 export function apply(ctx: AnyCtx): void {
+  ctx.effect(() => {
+    if (!document.getElementById(STYLE_ID)) {
+      const style = document.createElement('style')
+      style.id = STYLE_ID
+      style.setAttribute('data-plugin', 'dsh-mcp-adapter')
+      style.textContent = MCP_ROW_CSS
+      document.head.appendChild(style)
+    }
+    return () => {
+      document.getElementById(STYLE_ID)?.remove()
+    }
+  }, 'dsh-mcp-adapter: styles')
+
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register(
     { name: 'tool.call.toolview', key: 'mcp' },
-    McpToolRow as unknown as ReactNode,
+    McpToolRow,
   ))
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register(
     { name: 'tool.call.toolview', key: 'mcpScript' },
-    McpToolRow as unknown as ReactNode,
+    McpToolRow,
   ))
 
   const command = ctx.get('commandUi') as CommandUi | undefined
@@ -105,37 +131,71 @@ async function loadSnapshot(ctx: AnyCtx, sessionId: string, signal: AbortSignal)
 
 function buildOptions(snapshot: Snapshot): SelectOption[] {
   const options: SelectOption[] = [
-    { id: 'status', label: 'Status', detail: 'Servers, connection state, and cached tools' },
-    { id: 'list', label: 'Config sources', detail: 'Where MCP configs were loaded from' },
-    { id: 'setup', label: 'How to add a custom server', detail: '/mcp add name url=… or command=…' },
-    { id: 'prompts', label: 'Prompts', detail: 'Cached MCP prompt slash commands' },
+    { id: 'status', label: 'Status', detail: 'Connection state and cached tools' },
+    { id: 'list', label: 'Sources', detail: 'Config files this session loaded' },
+    { id: 'prompts', label: 'Prompts', detail: 'Cached MCP slash commands' },
   ]
   for (const preset of snapshot.presets ?? []) {
     if (preset.configured) continue
     options.push({
       id: `add-preset:${preset.id}`,
-      label: `Add ${preset.name}`,
-      detail: preset.summary,
+      label: preset.name,
+      detail: `Add · ${preset.summary}`,
     })
   }
   for (const server of snapshot.servers ?? []) {
-    const mark = server.disabled ? '○' : server.status === 'connected' ? '●' : '◐'
+    const status = server.disabled ? 'disabled' : server.status ?? 'idle'
+    const count = `${server.toolCount ?? 0} tools`
     if (server.disabled) {
-      options.push({ id: `enable:${server.name}`, label: `${mark} Enable ${server.name}`, detail: 'Turn this server back on' })
+      options.push({
+        id: `enable:${server.name}`,
+        label: server.name,
+        detail: `Enable · ${status}`,
+      })
+    } else if (server.status === 'needs-auth' || ((server.oauth || server.hasUrl) && server.status === 'not-connected')) {
+      options.push({
+        id: `auth:${server.name}`,
+        label: server.name,
+        detail: `Authorize · ${status}`,
+      })
+      options.push({
+        id: `connect:${server.name}`,
+        label: server.name,
+        detail: `Connect · ${count}`,
+      })
     } else {
       options.push({
         id: `connect:${server.name}`,
-        label: `${mark} Connect ${server.name}`,
-        detail: `${server.status ?? 'idle'} · ${server.toolCount ?? 0} tools`,
+        label: server.name,
+        detail: server.status === 'connected' ? `Connected · ${count}` : `Connect · ${status} · ${count}`,
       })
-      if (server.oauth || server.hasUrl) {
-        options.push({ id: `auth:${server.name}`, label: `Authorize ${server.name}`, detail: 'Start OAuth in the browser' })
-      }
-      options.push({ id: `disable:${server.name}`, label: `Disable ${server.name}`, detail: 'Keep config, stop connecting' })
     }
-    options.push({ id: `remove:${server.name}`, label: `Remove ${server.name}`, detail: 'Delete from .mcp.json or disable' })
+    if (!server.disabled) {
+      options.push({
+        id: `disable:${server.name}`,
+        label: server.name,
+        detail: 'Disable',
+        confirmation: confirmDialog(`Disable ${server.name}?`, 'The server stays in config but will not connect.'),
+      })
+    }
+    options.push({
+      id: `remove:${server.name}`,
+      label: server.name,
+      detail: 'Remove',
+      confirmation: confirmDialog(`Remove ${server.name}?`, 'Deletes it from project .mcp.json, or disables it if it came from another file.'),
+    })
   }
   return options
+}
+
+function confirmDialog(title: string, description: string): SelectOption['confirmation'] {
+  return {
+    title,
+    description,
+    acknowledgeLabel: 'I understand',
+    cancelLabel: 'Cancel',
+    confirmLabel: 'Continue',
+  }
 }
 
 function lineFor(id: string): string {

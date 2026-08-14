@@ -103,6 +103,32 @@ function registerProxyTool(ctx: Context, state: McpRuntimeState): void {
       if (args.connect) return { card: 'generic', title: `mcp connect ${args.connect}`, kind: 'other' }
       return { card: 'generic', title: 'mcp', kind: 'other' }
     },
+    presentResult(args, result) {
+      const meta = result.meta
+      if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return undefined
+      const details = meta as { mode?: unknown; matches?: unknown; count?: unknown; hasMore?: unknown }
+      if (details.mode !== 'search' || !Array.isArray(details.matches)) return undefined
+      const files = new Map<string, Array<{ lineNumber: number; line: string }>>()
+      for (const raw of details.matches) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+        const match = raw as { name?: unknown; server?: unknown; description?: unknown }
+        const server = typeof match.server === 'string' ? match.server : 'mcp'
+        const name = typeof match.name === 'string' ? match.name : ''
+        const description = typeof match.description === 'string' ? match.description : ''
+        const rows = files.get(server) ?? []
+        rows.push({ lineNumber: rows.length + 1, line: description ? `${name}  ${description}` : name })
+        files.set(server, rows)
+      }
+      const total = typeof details.count === 'number' ? details.count : [...files.values()].reduce((sum, rows) => sum + rows.length, 0)
+      return {
+        card: 'search',
+        shape: 'matches',
+        title: args.search ? `MCP Search ${args.search}` : 'MCP Search',
+        files: [...files.entries()].map(([path, matches]) => ({ path, matches })),
+        truncated: details.hasMore === true,
+        total,
+      }
+    },
     async execute(args, exec) {
       const parsedArgs = args.args === undefined ? undefined : parseJsonObjectArgs(args.args)
       const result = await dispatchProxy(state, { ...args, args: parsedArgs }, exec.signal)
