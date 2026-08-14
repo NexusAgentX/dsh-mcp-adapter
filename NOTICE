@@ -1,0 +1,14 @@
+dsh-mcp-adapter
+Copyright (c) 2026 NexusAgentX
+
+This project is an independent DeepSeek Harness plugin. It is not affiliated
+with DeepSeek AI.
+
+The adapter's product contract — a single proxy tool, lazy MCP server
+lifecycle, on-demand search/describe, and standard .mcp.json discovery —
+is inspired by pi-mcp-adapter:
+
+  https://github.com/nicobailon/pi-mcp-adapter
+
+pi-mcp-adapter is MIT-licensed. See that repository for its copyright
+holders and license text.

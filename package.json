@@ -1,0 +1,62 @@
+{
+  "name": "dsh-mcp-adapter",
+  "version": "0.0.1",
+  "description": "MCP adapter for DeepSeek Harness — one proxy tool instead of dumping every MCP schema into context.",
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "dsh-mcp-adapter": "./cli.js"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "cli.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "prepack": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "coding-agent"
+  ],
+  "license": "MIT",
+  "author": "NexusAgentX",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NexusAgentX/dsh-mcp-adapter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NexusAgentX/dsh-mcp-adapter/issues"
+  },
+  "homepage": "https://github.com/NexusAgentX/dsh-mcp-adapter#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}
