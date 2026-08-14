@@ -4,7 +4,6 @@ import { formatPromptResult, listAllPromptMetadata, parsePromptArgs, resolveProm
 import { connectAndCache } from './runtime.js'
 import { paginate, rankSuggestions, rankToolMatches } from './search-ranking.js'
 import type { McpRuntimeState } from './state.js'
-import { isSessionApproved, isToolCallApprovalRequired, rememberSessionApproval } from './tool-approval.js'
 import { findToolByName } from './tool-metadata.js'
 import { formatSchema } from './ts-shape.js'
 import type { ProxyResult, ToolMetadata } from './types.js'
@@ -327,13 +326,6 @@ export async function executeCall(
   const definition = state.config.mcpServers[serverName]
   if (!definition) return result(`Unknown server "${serverName}".`, { mode: 'call', error: 'unknown_server', server: serverName })
   if (isServerDisabled(definition)) return disabledResult('call', serverName)
-  if (isToolCallApprovalRequired(state.config, serverName, tool) && !isSessionApproved(state, serverName, tool.originalName)) {
-    return result(
-      `Tool "${tool.name}" requires approval. Run /mcp approve ${serverName} ${tool.originalName} to allow it for this session, or set approveTools.`,
-      { mode: 'call', error: 'approval_required', server: serverName, tool: tool.name },
-    )
-  }
-  if (isSessionApproved(state, serverName, tool.originalName)) rememberSessionApproval(state, serverName, tool.originalName)
 
   try {
     await connectAndCache(state, serverName, definition, signal)

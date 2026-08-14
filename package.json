@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp-adapter",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP adapter for DeepSeek Harness — one proxy tool instead of dumping every MCP schema into context.",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,6 +10,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./client": {
+      "default": "./dist/client.js"
     },
     "./package.json": "./package.json"
   },
@@ -26,10 +29,18 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-tool",
+        "@deepseek-ai/dsh-client-ui-commands"
+      ]
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js && node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test test/*.test.ts",
     "prepack": "npm run build && npm test"
@@ -87,6 +98,7 @@
     "@deepseek-ai/dsh-tools": "^0.0.1-rc.1",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@types/cross-spawn": "^6.0.6",
+    "esbuild": "^0.25.0",
     "@types/node": "^22.15.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"

@@ -29,7 +29,7 @@ Do not mount this adapter and `@deepseek-ai/dsh-mcp-client` against the same ser
 dsh plugin --profile web add dsh-mcp-adapter
 ```
 
-Restart the profile (`dsh web` / `dsh tui`) after install.
+Restart `dsh web` after install. The package is a dual-face plugin: the Host half registers tools/commands, and the Web client half adds the `/mcp` popup and MCP tool cards.
 
 ## Quick start
 
@@ -131,12 +131,22 @@ mcp({ prompt: "create_plan", server: "agent-board", args: "harden retry policy" 
 
 `mcpScript` can loop/search/call multiple MCP tools in one JavaScript request.
 
+## Web UI
+
+After `dsh plugin --profile web add dsh-mcp-adapter` and a Web restart:
+
+- Type `/mcp` for a popup: Status / Config sources / Setup / Prompts.
+- `/mcp connect <server>` and `/mcp auth <server>` stay typed commands.
+- `approveTools` opens the same Chat Ask dialog as other sensitive tools.
+- `mcp` / `mcpScript` cards show server dots, search hits, and an **Open authorization** button when OAuth starts.
+
 ## Human command
 
 ```
 /mcp
 /mcp list
 /mcp connect <server>
+/mcp auth <server>
 /mcp enable <server>
 /mcp disable <server>
 ```
@@ -150,7 +160,7 @@ dsh-mcp-adapter status
 
 ## Status
 
-| Piece | 0.2.0 |
+| Piece | 0.3.0 |
 |---|---|
 | `mcp` proxy tool | yes |
 | `.mcp.json` merge + host discovery | yes |
@@ -165,6 +175,8 @@ dsh-mcp-adapter status
 | `mcpScript` | yes |
 | `approveTools` | yes |
 | Agent Plugins / unix sockets / npx resolver | yes |
+| Web `/mcp` popup + MCP tool cards | yes |
+| Web Ask dialog for `approveTools` | yes |
 | elicitation / sampling / MCP UI apps | not in dsh host yet |
 
 ## License

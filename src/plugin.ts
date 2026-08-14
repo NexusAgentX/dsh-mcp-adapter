@@ -3,6 +3,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-tools'
+import { registerApprovalGate } from './approval-gate.js'
 import { handleMcpCommand } from './commands.js'
 import { resolveDirectTools } from './direct-tools.js'
 import { logger } from './logger.js'
@@ -46,6 +47,7 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   registerScriptTool(ctx, state)
   registerCommand(ctx, state)
   registerPromptCommands(ctx, state)
+  registerApprovalGate(ctx, state)
 
   await startRuntime(state, controller.signal)
   logger.info(`loaded ${Object.keys(state.config.mcpServers).length} MCP server(s)`)
@@ -85,8 +87,16 @@ function registerProxyTool(ctx: Context, state: McpRuntimeState): void {
         const text = typeof record?.text === 'string' ? record.text : JSON.stringify(value)
         return [{ type: 'text', text }]
       },
+      presentationMeta(_args, value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+        const details = (value as { details?: unknown }).details
+        return details === undefined ? null : JSON.parse(JSON.stringify(details))
+      },
     },
     presentCall(args) {
+      if (args.action === 'auth-start') return { card: 'generic', title: `mcp auth ${args.server ?? ''}`.trim(), kind: 'fetch' }
+      if (args.action === 'auth-complete') return { card: 'generic', title: 'mcp auth complete', kind: 'fetch' }
+      if (args.prompt) return { card: 'generic', title: `mcp prompt ${args.prompt}`, kind: 'read' }
       if (args.tool) return { card: 'generic', title: `mcp ${args.tool}`, kind: 'other' }
       if (args.search !== undefined) return { card: 'generic', title: 'mcp search', kind: 'search' }
       if (args.describe) return { card: 'generic', title: `mcp describe ${args.describe}`, kind: 'read' }

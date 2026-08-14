@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-14
+
+### Added
+
+- Web UI approval: gated MCP calls now return `tools/pre-execute` `ask`, so the Chat Ask dialog handles `approveTools`.
+- Web client plugin: dedicated `mcp` / `mcpScript` tool cards (status dots, search hits, clickable OAuth button) and a `/mcp` popupSelect menu.
+
 ## [0.2.0] - 2026-08-14
 
 ### Added
