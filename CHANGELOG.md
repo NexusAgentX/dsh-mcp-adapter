@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-14
+
+### Changed
+
+- Rewrote the README around the Web `/mcp` configure flow, complete command list, and honest Settings limitation.
+
 ## [0.6.0] - 2026-08-14
 
 ### Changed

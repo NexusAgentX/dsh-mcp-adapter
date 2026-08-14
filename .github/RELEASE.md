@@ -5,7 +5,7 @@
 3. Commit, then tag and push:
 
 ```sh
-git tag v0.1.0
+git tag v0.6.1
 git push origin main --tags
 ```
 
@@ -16,3 +16,9 @@ Required repository secret:
 - `NPM_TOKEN` — npm granular access token with read/write for `dsh-mcp-adapter`
 
 The workflow uses the `npm` GitHub Environment.
+
+If the token is missing, publish locally after `npm login`:
+
+```sh
+npm publish --access public
+```

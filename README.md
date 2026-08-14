@@ -2,7 +2,7 @@
 
 Use [MCP](https://modelcontextprotocol.io/) servers with [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) without burning the context window.
 
-One `mcp` proxy tool. Lazy server start. On-demand `search` / `describe` / `call`.
+One `mcp` proxy tool. Lazy server start. On-demand `search` / `describe` / `call`. Configure from the Web `/mcp` menu.
 
 English | [中文](#中文)
 
@@ -15,7 +15,7 @@ This adapter follows the [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-a
 - one `mcp` proxy tool instead of hundreds of schemas
 - lazy server start
 - on-demand `search` / `describe` / `call`
-- standard `.mcp.json` / `~/.config/mcp/mcp.json` discovery
+- standard `.mcp.json` discovery, plus a Web `/mcp` menu that can write the project file
 - optional `directTools` promotion for hot-path tools
 - metadata cache so search works before a live connect
 
@@ -29,11 +29,33 @@ Do not mount this adapter and `@deepseek-ai/dsh-mcp-client` against the same ser
 dsh plugin --profile web add dsh-mcp-adapter
 ```
 
-Restart `dsh web` after install. The package is a dual-face plugin: the Host half registers tools/commands, and the Web client half adds the `/mcp` popup and MCP tool cards.
+Restart `dsh web` and hard-refresh the browser. The package is dual-face: the Host half registers tools and commands; the Web client half adds the `/mcp` popup and MCP tool cards.
 
-## Quick start
+There is **no** MCP form under Settings → Plugins. Official plugin settings are an allowlist; out-of-tree plugins cannot register a card there. Configuration happens in the `/mcp` menu or in JSON files.
 
-Preferred project config: `.mcp.json`
+## Web UI (primary)
+
+In Chat, type `/mcp`:
+
+| Menu | What it does |
+|---|---|
+| Status / Sources / Prompts | Inspect state |
+| DeepWiki, Context7, Notion, GitHub, Chrome DevTools | One-click add to project `.mcp.json` |
+| *server* · Connect / Authorize | Connect, or open the OAuth browser flow |
+| *server* · Disable / Remove | Confirm, then stop or delete |
+
+Custom server (also writes `.mcp.json` and reloads in-process):
+
+```
+/mcp add docs url=https://mcp.example.com/mcp
+/mcp add fs command=npx args=-y,@modelcontextprotocol/server-filesystem,/tmp
+```
+
+Then ask the model to `mcp({ search: "screenshot" })`. Tool cards use the same `DisclosureRow` / `StateDot` / `SearchBlock` chrome as first-party Skill and Tool rows. `approveTools` uses the Chat Ask dialog.
+
+## File config (shared / power user)
+
+Preferred project file is still `.mcp.json` if you want the same servers in Cursor or other hosts:
 
 ```json
 {
@@ -46,24 +68,12 @@ Preferred project config: `.mcp.json`
 }
 ```
 
-Then:
-
-```
-mcp({ search: "screenshot" })
-mcp({ describe: "chrome-devtools_take_screenshot" })
-mcp({ tool: "chrome-devtools_take_screenshot", args: { format: "png" } })
-```
-
-`args` can be a JSON object or a JSON string.
-
-## Config files
-
 | File | Purpose |
 |---|---|
 | `~/.config/mcp/mcp.json` | User-global shared MCP config |
 | `~/.agents/mcp.json` | User-global tool-agnostic MCP config |
 | `~/.agents/mcp/mcp.json` | User-global tool-agnostic MCP config |
-| `.mcp.json` | Project-local shared MCP config |
+| `.mcp.json` | Project-local shared MCP config (Web add/remove writes here) |
 | `$DSH_HOME/mcp.json` | dsh global override (`~/.dsh/mcp.json` by default) |
 | `.dsh/mcp.json` | dsh project override |
 
@@ -111,44 +121,42 @@ Host-specific configs (Cursor, Claude Code, Codex, OpenCode, Windsurf, VS Code) 
 | `idleTimeout` | Minutes before an idle lazy server is closed (default 10, `0` disables) |
 | `directTools` | `true` or a name list — register those tools as native dsh tools |
 | `url` / `headers` / `bearerToken` / `bearerTokenEnv` | Streamable HTTP; SSE fallback on 404/405 |
+| `auth` / `oauth` | `"oauth"` or `"bearer"`; OAuth tokens go in the OS credential store |
+| `socket` | `rmcp-mux` Unix-domain socket (mutually exclusive with `command` / `url`) |
+| `approveTools` | `true` or globs — Chat Ask before those tools run |
 | `disabled` | Keep the entry visible but do not connect |
 
-## OAuth
+## Model tools
 
-```js
+```
+mcp({ search: "screenshot" })
+mcp({ describe: "chrome-devtools_take_screenshot" })
+mcp({ tool: "chrome-devtools_take_screenshot", args: { format: "png" } })
+mcp({ connect: "chrome-devtools" })
 mcp({ action: "auth-start", server: "notion" })
 mcp({ action: "auth-complete", server: "notion", args: { redirectUrl: "http://localhost:.../callback?code=..." } })
-```
-
-Or `/mcp auth notion`. Tokens persist in the OS credential store.
-
-## Prompts and scripting
-
-```
 mcp({ prompt: "create_plan", server: "agent-board", args: "harden retry policy" })
-/mcp prompts
 ```
 
-`mcpScript` can loop/search/call multiple MCP tools in one JavaScript request.
+`args` can be a JSON object or a JSON string. `mcpScript` can loop / search / call several MCP tools in one JavaScript request.
 
-## Web UI
-
-After `dsh plugin --profile web add dsh-mcp-adapter` and a Web restart:
-
-- Type `/mcp` for a live menu: status, add DeepWiki/Context7/Notion/GitHub/Chrome DevTools, then per-server Connect / Authorize / Disable / Remove.
-- Custom server still works as `/mcp add docs url=https://…` or `/mcp add fs command=npx args=-y,pkg` — it writes project `.mcp.json` and reloads immediately.
-- `approveTools` opens the same Chat Ask dialog as other sensitive tools.
-- `mcp` / `mcpScript` cards show server dots, search hits, and an **Open authorization** button when OAuth starts.
-
-## Human command
+## Human commands
 
 ```
 /mcp
+/mcp status
 /mcp list
+/mcp json
+/mcp setup
+/mcp prompts
+/mcp add-preset <deepwiki|context7|notion|github|chrome-devtools>
+/mcp add <name> url=<url>
+/mcp add <name> command=<cmd> [args=a,b] [auth=oauth]
 /mcp connect <server>
 /mcp auth <server>
 /mcp enable <server>
 /mcp disable <server>
+/mcp remove <server>
 ```
 
 ## CLI
@@ -162,21 +170,12 @@ dsh-mcp-adapter status
 
 | Piece | 0.6.0 |
 |---|---|
-| `mcp` proxy tool | yes |
-| `.mcp.json` merge + host discovery | yes |
-| lazy / eager / keep-alive | yes |
-| metadata cache | yes |
-| `/mcp` command | yes |
-| `directTools` | yes |
-| resources as `read_*` tools | yes |
-| output guard | yes |
-| OAuth browser flow | yes |
-| MCP prompts | yes |
-| `mcpScript` | yes |
-| `approveTools` | yes |
-| Agent Plugins / unix sockets / npx resolver | yes |
-| Web `/mcp` popup + MCP tool cards | yes |
-| Web Ask dialog for `approveTools` | yes |
+| `mcp` proxy + lazy lifecycle + metadata cache | yes |
+| Web `/mcp` configure / connect / auth | yes |
+| Web cards (`DisclosureRow` / `SearchBlock`) | yes |
+| Web Ask for `approveTools` | yes |
+| OAuth, prompts, `mcpScript`, Agent Plugins, sockets | yes |
+| Settings → Plugins form | no (host allowlist) |
 | elicitation / sampling / MCP UI apps | not in dsh host yet |
 
 ## License
@@ -189,24 +188,20 @@ Inspired by [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter) (MIT)
 
 ## 中文
 
-给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的 MCP 适配器：一个代理工具，按需搜索 / 描述 / 调用，而不是把每个 MCP schema 都塞进上下文。机制对齐 [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter)。
+给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的 MCP 适配器：一个代理工具，按需搜索 / 描述 / 调用，不把每个 MCP schema 塞进上下文。
+
+**配置入口是 Web 的 `/mcp`，不是 Settings。** 官方插件设置页不允许外部插件挂表单。
 
 ```sh
 dsh plugin --profile web add dsh-mcp-adapter
 ```
 
-```json
-{
-  "mcpServers": {
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@1.6.0"]
-    }
-  }
-}
-```
+重启 `dsh web`，硬刷新，在输入框敲 `/mcp`：
 
-```
-mcp({ search: "screenshot" })
-mcp({ tool: "chrome-devtools_take_screenshot", args: { format: "png" } })
-```
+- 一键添加 DeepWiki / Context7 / Notion / GitHub / Chrome DevTools（写入项目 `.mcp.json`，立刻生效）
+- 对已有 server：连接、授权、停用、移除
+- 自定义：`/mcp add docs url=https://…` 或 `/mcp add fs command=npx args=-y,pkg`
+
+然后让模型 `mcp({ search: "screenshot" })`。卡片和官方 Skill / Tool 行同一套 `DisclosureRow` / `StateDot` / `SearchBlock`。
+
+也可以继续用手写 `.mcp.json` / `~/.config/mcp/mcp.json`，和其他 MCP 宿主共用。不要和 `@deepseek-ai/dsh-mcp-client` 挂同一批 server。
