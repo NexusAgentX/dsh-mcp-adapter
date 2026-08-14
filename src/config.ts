@@ -109,6 +109,108 @@ export function resolveConfiguredOAuthDir(raw: unknown, cwd = process.cwd()): st
   return resolve(cwd, trimmed)
 }
 
+export interface KnownServerPreset {
+  id: string
+  name: string
+  summary: string
+  entry: ServerEntry
+}
+
+export const KNOWN_SERVER_PRESETS: readonly KnownServerPreset[] = [
+  {
+    id: 'deepwiki',
+    name: 'DeepWiki',
+    summary: 'Ask questions about public GitHub repositories.',
+    entry: { url: 'https://mcp.deepwiki.com/mcp' },
+  },
+  {
+    id: 'context7',
+    name: 'Context7',
+    summary: 'Look up current library documentation and examples.',
+    entry: { url: 'https://mcp.context7.com/mcp' },
+  },
+  {
+    id: 'notion',
+    name: 'Notion',
+    summary: 'Search and work with your Notion workspace.',
+    entry: { url: 'https://mcp.notion.com/mcp', auth: 'oauth' },
+  },
+  {
+    id: 'github',
+    name: 'GitHub',
+    summary: 'Work with GitHub through your Copilot account.',
+    entry: { url: 'https://api.githubcopilot.com/mcp', auth: 'oauth' },
+  },
+  {
+    id: 'chrome-devtools',
+    name: 'Chrome DevTools',
+    summary: 'Inspect and automate a local Chrome browser.',
+    entry: { command: 'npx', args: ['-y', 'chrome-devtools-mcp@1.6.0'] },
+  },
+]
+
+export function writeProjectServer(cwd: string, serverName: string, entry: ServerEntry): { path: string; changed: boolean } {
+  return mutateProjectServers(cwd, servers => {
+    servers[serverName] = entry
+  })
+}
+
+export function removeProjectServer(cwd: string, serverName: string): { path: string; changed: boolean; removed: boolean } {
+  let removed = false
+  const result = mutateProjectServers(cwd, servers => {
+    if (servers[serverName] === undefined) return
+    delete servers[serverName]
+    removed = true
+  })
+  return { ...result, removed }
+}
+
+export function parseServerAddSpec(raw: string): { name: string; entry: ServerEntry } {
+  const tokens = raw.trim().split(/\s+/).filter(Boolean)
+  const name = tokens.shift()
+  if (!name) throw new Error('Usage: /mcp add <name> url=<url> | command=<cmd> [args=a,b] [auth=oauth]')
+  const fields: Record<string, string> = {}
+  for (const token of tokens) {
+    const eq = token.indexOf('=')
+    if (eq <= 0) throw new Error(`Invalid field ${JSON.stringify(token)}; expected key=value`)
+    fields[token.slice(0, eq)] = token.slice(eq + 1)
+  }
+  const entry: ServerEntry = {}
+  if (fields.url) entry.url = fields.url
+  if (fields.command) entry.command = fields.command
+  if (fields.args) entry.args = fields.args.split(',').filter(Boolean)
+  if (fields.auth === 'oauth' || fields.auth === 'bearer') entry.auth = fields.auth
+  if (fields.cwd) entry.cwd = fields.cwd
+  const configured = [entry.command, entry.url, entry.socket].filter(value => typeof value === 'string' && value.length > 0)
+  if (configured.length !== 1) throw new Error('Specify exactly one of url= or command=')
+  return { name, entry }
+}
+
+function mutateProjectServers(cwd: string, mutate: (servers: Record<string, ServerEntry>) => void): { path: string; changed: boolean } {
+  const filePath = getProjectConfigPath(cwd)
+  let raw: Record<string, unknown> = {}
+  if (existsSync(filePath)) {
+    try {
+      const parsed = parseJsonConfig(readFileSync(filePath, 'utf8'))
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) raw = parsed as Record<string, unknown>
+    } catch {
+      raw = {}
+    }
+  }
+  const servers = getServersObject(raw)
+  const before = JSON.stringify(servers)
+  mutate(servers)
+  setServersObject(raw, servers)
+  const afterText = `${JSON.stringify(raw, null, 2)}\n`
+  const beforeText = existsSync(filePath) ? readFileSync(filePath, 'utf8') : ''
+  if (beforeText === afterText && before === JSON.stringify(servers)) return { path: filePath, changed: false }
+  mkdirSync(dirname(filePath), { recursive: true })
+  const tmpPath = `${filePath}.${process.pid}.tmp`
+  writeFileSync(tmpPath, afterText, 'utf8')
+  renameSync(tmpPath, filePath)
+  return { path: filePath, changed: beforeText !== afterText }
+}
+
 export function discoverConfig(cwd = process.cwd()): {
   sources: ConfigDiscoverySource[]
   imports: DiscoveredImportConfig[]

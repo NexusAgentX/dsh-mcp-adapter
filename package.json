@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp-adapter",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "MCP adapter for DeepSeek Harness — one proxy tool instead of dumping every MCP schema into context.",
   "type": "module",
   "main": "./dist/index.js",

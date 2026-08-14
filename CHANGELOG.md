@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-14
+
+### Added
+
+- Web `/mcp` menu now lists live servers and curated presets, and can add/connect/authorize/disable/remove them.
+- `/mcp add`, `/mcp add-preset`, `/mcp remove`, and `/mcp json` for Web-driven project `.mcp.json` edits with in-process config reload.
+
 ## [0.3.0] - 2026-08-14
 
 ### Added

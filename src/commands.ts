@@ -1,17 +1,66 @@
-import { discoverConfig, writeProjectServerDisabledOverride } from './config.js'
+import {
+  discoverConfig,
+  KNOWN_SERVER_PRESETS,
+  parseServerAddSpec,
+  removeProjectServer,
+  writeProjectServer,
+  writeProjectServerDisabledOverride,
+} from './config.js'
+import { supportsOAuth } from './mcp-auth-flow.js'
 import { executeAuthStart, executeStatus } from './proxy.js'
 import { listAllPromptMetadata } from './prompts.js'
-import { connectAndCache } from './runtime.js'
+import { connectAndCache, reloadRuntimeConfig } from './runtime.js'
 import type { McpRuntimeState } from './state.js'
 import { rememberSessionApproval } from './tool-approval.js'
 import { isServerDisabled } from './types.js'
 import { formatTerminalError } from './utils.js'
+
+export function mcpSnapshot(state: McpRuntimeState) {
+  const discovery = discoverConfig(state.cwd)
+  const servers = Object.entries(state.config.mcpServers)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, definition]) => {
+      const connection = state.manager.getConnection(name)
+      const tools = state.toolMetadata.get(name) ?? []
+      let status = 'cached'
+      if (isServerDisabled(definition)) status = 'disabled'
+      else if (connection?.status === 'connected') status = 'connected'
+      else if (connection?.status === 'needs-auth') status = 'needs-auth'
+      else if (state.manager.isConnecting(name)) status = 'connecting'
+      else if (state.failureMessages.get(name)) status = 'failed'
+      else if (tools.length === 0) status = 'not-connected'
+      return {
+        name,
+        status,
+        toolCount: tools.length,
+        disabled: isServerDisabled(definition),
+        lifecycle: definition.lifecycle ?? 'lazy',
+        hasUrl: Boolean(definition.url),
+        oauth: supportsOAuth(definition),
+      }
+    })
+  return {
+    servers,
+    presets: KNOWN_SERVER_PRESETS.map(preset => ({
+      id: preset.id,
+      name: preset.name,
+      summary: preset.summary,
+      configured: state.config.mcpServers[preset.id] !== undefined,
+    })),
+    sources: discovery.sources,
+    imports: discovery.imports,
+    hostConfigDiscovery: discovery.hostConfigDiscovery,
+  }
+}
 
 export async function handleMcpCommand(state: McpRuntimeState, rawInput: string): Promise<{ kind: 'success' | 'error'; text: string }> {
   const trimmed = rawInput.trim()
   const [verb = '', ...rest] = trimmed.split(/\s+/)
   const arg = rest.join(' ').trim()
 
+  if (verb === 'json') {
+    return { kind: 'success', text: JSON.stringify(mcpSnapshot(state)) }
+  }
   if (!verb || verb === 'status') {
     const status = await executeStatus(state)
     return { kind: 'success', text: status.text }
@@ -50,10 +99,51 @@ export async function handleMcpCommand(state: McpRuntimeState, rawInput: string)
     if (!state.config.mcpServers[arg]) return { kind: 'error', text: `Unknown server "${arg}".` }
     if (state.programmaticConfig) return { kind: 'error', text: '/mcp disable is unavailable for in-memory config.' }
     const written = writeProjectServerDisabledOverride(state.cwd, arg, true)
-    const definition = state.config.mcpServers[arg]
-    if (definition) definition.disabled = true
+    reloadRuntimeConfig(state)
     await state.manager.close(arg)
     return { kind: 'success', text: `Disabled ${arg}${written.changed ? ` (wrote ${written.path})` : ''}.` }
+  }
+  if (verb === 'enable') {
+    if (!arg) return { kind: 'error', text: 'Usage: /mcp enable <server>' }
+    if (state.programmaticConfig) return { kind: 'error', text: '/mcp enable is unavailable for in-memory config.' }
+    const written = writeProjectServerDisabledOverride(state.cwd, arg, false)
+    reloadRuntimeConfig(state)
+    return { kind: 'success', text: `Enabled ${arg}${written.changed ? ` (wrote ${written.path})` : ''}.` }
+  }
+  if (verb === 'add-preset') {
+    if (!arg) return { kind: 'error', text: 'Usage: /mcp add-preset <deepwiki|context7|notion|github|chrome-devtools>' }
+    if (state.programmaticConfig) return { kind: 'error', text: '/mcp add-preset is unavailable for in-memory config.' }
+    const preset = KNOWN_SERVER_PRESETS.find(item => item.id === arg)
+    if (!preset) return { kind: 'error', text: `Unknown preset "${arg}".` }
+    const written = writeProjectServer(state.cwd, preset.id, preset.entry)
+    reloadRuntimeConfig(state)
+    return { kind: 'success', text: `Added ${preset.name} to ${written.path}.` }
+  }
+  if (verb === 'add') {
+    if (!arg) return { kind: 'error', text: 'Usage: /mcp add <name> url=<url> | command=<cmd> [args=a,b] [auth=oauth]' }
+    if (state.programmaticConfig) return { kind: 'error', text: '/mcp add is unavailable for in-memory config.' }
+    try {
+      const spec = parseServerAddSpec(arg)
+      const written = writeProjectServer(state.cwd, spec.name, spec.entry)
+      reloadRuntimeConfig(state)
+      return { kind: 'success', text: `Added ${spec.name} to ${written.path}.` }
+    } catch (error) {
+      return { kind: 'error', text: formatTerminalError(error) }
+    }
+  }
+  if (verb === 'remove') {
+    if (!arg) return { kind: 'error', text: 'Usage: /mcp remove <server>' }
+    if (state.programmaticConfig) return { kind: 'error', text: '/mcp remove is unavailable for in-memory config.' }
+    const written = removeProjectServer(state.cwd, arg)
+    if (!written.removed) {
+      const disabled = writeProjectServerDisabledOverride(state.cwd, arg, true)
+      reloadRuntimeConfig(state)
+      await state.manager.close(arg)
+      return { kind: 'success', text: `Server ${arg} was not in .mcp.json; disabled via ${disabled.path}.` }
+    }
+    reloadRuntimeConfig(state)
+    await state.manager.close(arg)
+    return { kind: 'success', text: `Removed ${arg} from ${written.path}.` }
   }
   if (verb === 'auth') {
     if (!arg) return { kind: 'error', text: 'Usage: /mcp auth <server>' }
@@ -83,25 +173,14 @@ export async function handleMcpCommand(state: McpRuntimeState, rawInput: string)
         `configured servers: ${discovery.totalServerCount}`,
         `hostConfigDiscovery: ${discovery.hostConfigDiscovery}`,
         '',
-        'Write a project .mcp.json, or set settings.hostConfigDiscovery to "on" to adopt detected host configs.',
-        'Curated remotes: DeepWiki https://mcp.deepwiki.com/mcp , Context7 https://mcp.context7.com/mcp',
+        'In Web UI, open /mcp and pick a preset or server action.',
+        'Custom server: /mcp add <name> url=https://...   or   /mcp add <name> command=npx args=-y,pkg',
         ...discovery.imports.map(entry => `detected ${entry.kind}: ${entry.path}`),
       ].join('\n'),
     }
   }
-  if (verb === 'enable') {
-    if (!arg) return { kind: 'error', text: 'Usage: /mcp enable <server>' }
-    if (!state.config.mcpServers[arg] && !state.programmaticConfig) {
-      return { kind: 'error', text: `Unknown server "${arg}".` }
-    }
-    if (state.programmaticConfig) return { kind: 'error', text: '/mcp enable is unavailable for in-memory config.' }
-    const written = writeProjectServerDisabledOverride(state.cwd, arg, false)
-    const definition = state.config.mcpServers[arg]
-    if (definition) delete definition.disabled
-    return { kind: 'success', text: `Enabled ${arg}${written.changed ? ` (wrote ${written.path})` : ''}.` }
-  }
   return {
     kind: 'error',
-    text: 'Usage: /mcp [status|list|connect <server>|auth <server>|prompts|approve <server> <tool>|setup|enable <server>|disable <server>]',
+    text: 'Usage: /mcp [status|json|list|connect <server>|auth <server>|add-preset <id>|add <name> url=...|remove <server>|enable <server>|disable <server>|prompts|setup]',
   }
 }

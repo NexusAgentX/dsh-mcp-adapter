@@ -10,6 +10,7 @@ export interface McpRuntimeState {
   config: McpConfig
   programmaticConfig: boolean
   cwd: string
+  configPath?: string
   toolMetadata: Map<string, ToolMetadata[]>
   promptMetadata: Map<string, PromptMetadata[]>
   resourceCounts: Map<string, number>

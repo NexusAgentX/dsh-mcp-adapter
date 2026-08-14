@@ -61,6 +61,7 @@ export function createRuntime(options: CreateRuntimeOptions = {}): McpRuntimeSta
     config,
     programmaticConfig,
     cwd,
+    configPath: options.configPath,
     toolMetadata,
     promptMetadata,
     resourceCounts,
@@ -156,6 +157,26 @@ export async function refreshServerMetadata(state: McpRuntimeState, name: string
         [name]: serializeServerCache(definition, connection.tools, connection.resources, connection.instructions, connection.prompts),
       },
     })
+  }
+}
+
+export function reloadRuntimeConfig(state: McpRuntimeState): void {
+  if (state.programmaticConfig) return
+  const next = loadMcpConfig(state.configPath, state.cwd)
+  const previousNames = new Set(Object.keys(state.config.mcpServers))
+  state.config = next
+  if (next.settings?.idleTimeout !== undefined) state.lifecycle.setGlobalIdleTimeout(next.settings.idleTimeout)
+  for (const [name, definition] of Object.entries(next.mcpServers)) {
+    if (isServerDisabled(definition)) continue
+    state.lifecycle.registerServer(name, definition, { idleTimeout: definition.idleTimeout })
+    if (definition.lifecycle === 'keep-alive' || definition.lifecycle === 'eager') {
+      state.lifecycle.markKeepAlive(name, definition)
+    }
+  }
+  for (const name of previousNames) {
+    if (next.mcpServers[name] === undefined || isServerDisabled(next.mcpServers[name])) {
+      void state.manager.close(name)
+    }
   }
 }
 

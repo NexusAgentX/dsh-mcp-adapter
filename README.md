@@ -135,8 +135,8 @@ mcp({ prompt: "create_plan", server: "agent-board", args: "harden retry policy" 
 
 After `dsh plugin --profile web add dsh-mcp-adapter` and a Web restart:
 
-- Type `/mcp` for a popup: Status / Config sources / Setup / Prompts.
-- `/mcp connect <server>` and `/mcp auth <server>` stay typed commands.
+- Type `/mcp` for a live menu: status, add DeepWiki/Context7/Notion/GitHub/Chrome DevTools, then per-server Connect / Authorize / Disable / Remove.
+- Custom server still works as `/mcp add docs url=https://…` or `/mcp add fs command=npx args=-y,pkg` — it writes project `.mcp.json` and reloads immediately.
 - `approveTools` opens the same Chat Ask dialog as other sensitive tools.
 - `mcp` / `mcpScript` cards show server dots, search hits, and an **Open authorization** button when OAuth starts.
 
@@ -160,7 +160,7 @@ dsh-mcp-adapter status
 
 ## Status
 
-| Piece | 0.3.0 |
+| Piece | 0.4.0 |
 |---|---|
 | `mcp` proxy tool | yes |
 | `.mcp.json` merge + host discovery | yes |
