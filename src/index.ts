@@ -1,5 +1,5 @@
 export const name = 'dsh-mcp-adapter'
-export { apply, Config } from './plugin.js'
+export { apply, Config, inject } from './plugin.js'
 export type { Config as PluginConfig } from './plugin.js'
 
 export { loadMcpConfig, cloneMcpConfig, discoverConfig } from './config.js'

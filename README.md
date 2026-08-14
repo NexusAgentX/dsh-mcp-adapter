@@ -168,7 +168,7 @@ dsh-mcp-adapter status
 
 ## Status
 
-| Piece | 0.6.0 |
+| Piece | 0.6.2 |
 |---|---|
 | `mcp` proxy + lazy lifecycle + metadata cache | yes |
 | Web `/mcp` configure / connect / auth | yes |

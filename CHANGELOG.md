@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-14
+
+### Fixed
+
+- Re-export `inject` from the package entry so Cordis can see `tools` and `dsh web` no longer crashes with `cannot get property "tools" without inject`.
+
 ## [0.6.1] - 2026-08-14
 
 ### Changed
